@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Client, Therapist, GeneratedSchedule, DayOfWeek, Team, ScheduleEntry, SessionType, BaseScheduleConfig, ValidationError, Callout, CalloutFormValues, AlliedHealthNeed, BulkOperationSummary } from './types';
+import { Client, Therapist, TherapistRole, GeneratedSchedule, DayOfWeek, Team, ScheduleEntry, SessionType, BaseScheduleConfig, ValidationError, Callout, CalloutFormValues, AlliedHealthNeed, BulkOperationSummary } from './types';
 import { DAYS_OF_WEEK, PALETTE_ICON_SVG, TEAM_COLORS, ALL_THERAPIST_ROLES, ALL_SESSION_TYPES, TIME_SLOTS_H_MM, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from './constants';
 import ClientForm from './components/ClientForm';
 import TherapistForm from './components/TherapistForm';
@@ -112,7 +112,7 @@ const App: React.FC = () => {
   const handleAddClient = () => { setError(null); clientService.addClient({ name: 'New Client', teamId: '', insuranceRequirements: [], alliedHealthNeeds: [] }); };
   const handleUpdateClient = (updatedClient: Client) => clientService.updateClient(updatedClient);
   const handleRemoveClient = (clientId: string) => clientService.removeClient(clientId);
-  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', teamId: '', qualifications: [], canProvideAlliedHealth: [] }); };
+  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', role: 'Technician', teamId: '', qualifications: [], canProvideAlliedHealth: [] }); };
   const handleUpdateTherapist = (updatedTherapist: Therapist) => therapistService.updateTherapist(updatedTherapist);
   const handleRemoveTherapist = (therapistId: string) => therapistService.removeTherapist(therapistId);
   const handleUpdateTeams = (updatedTeams: Team[]) => teamService.updateTeams(updatedTeams);
@@ -456,7 +456,7 @@ const App: React.FC = () => {
         if (rows.length <= 1) throw new Error("CSV file is empty or has only a header row.");
         const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
         summary.processedRows = rows.length - 1;
-        const therapistsToProcess: Partial<Omit<Therapist, 'canCoverIndirect'>>[] = [];
+        const therapistsToProcess: Partial<Therapist>[] = [];
         const therapistNamesToRemove: string[] = [];
         const newQualificationsFound = new Set<string>();
         for (let i = 1; i < rows.length; i++) {
@@ -469,7 +469,8 @@ const App: React.FC = () => {
                 let qualifications: string[] | undefined = rowData.qualifications !== undefined ? (rowData.qualifications ? rowData.qualifications.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
                 if(qualifications) qualifications.forEach(q => newQualificationsFound.add(q));
                 let canProvideAH: AlliedHealthNeed['type'][] | undefined = rowData.canprovidealliedhealth !== undefined ? (rowData.canprovidealliedhealth ? rowData.canprovidealliedhealth.split(';').map(s => s.trim().toUpperCase() as AlliedHealthNeed['type']).filter(s => s === 'OT' || s === 'SLP') : []) : undefined;
-                const partialTherapist: Partial<Omit<Therapist, 'canCoverIndirect'>> = { name: rowData.name };
+                const partialTherapist: Partial<Therapist> = { name: rowData.name };
+                if (rowData.role) partialTherapist.role = rowData.role as TherapistRole;
                 if (therapistTeam !== undefined || rowData.teamname !== undefined) partialTherapist.teamId = therapistTeam?.id;
                 if (qualifications !== undefined) partialTherapist.qualifications = qualifications;
                 if (canProvideAH !== undefined) partialTherapist.canProvideAlliedHealth = canProvideAH;

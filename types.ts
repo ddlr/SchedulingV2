@@ -16,7 +16,7 @@ export interface Team {
 }
 
 export type AlliedHealthServiceType = 'OT' | 'SLP';
-export type SessionType = 'ABA' | 'AlliedHealth_OT' | 'AlliedHealth_SLP' | 'IndirectTime';
+export type SessionType = 'ABA' | 'AlliedHealth_OT' | 'AlliedHealth_SLP' | 'IndirectTime' | 'AdminTime';
 export type TherapistRole = "RBT" | "BCBA" | "Clinical Fellow" | "3 STAR" | "Technician" | "Other";
 
 
@@ -43,6 +43,7 @@ export interface Client {
 export interface Therapist {
   id: string;
   name: string;
+  role: TherapistRole;
   teamId?: string;
   qualifications: string[];
   canProvideAlliedHealth: AlliedHealthServiceType[];
