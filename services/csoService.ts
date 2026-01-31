@@ -232,6 +232,7 @@ class FastScheduler {
         let minScore = Infinity;
         const iterations = this.clients.length > 15 ? 10000 : 5000;
         for (let i = 0; i < iterations; i++) {
+            if (i > 0 && i % 500 === 0) await new Promise(r => setTimeout(r, 0));
             const s = this.createSchedule(initialSchedule);
             const score = this.calculateScore(s);
             if (score < minScore) {

@@ -41,17 +41,25 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
     handleInputChange('insuranceRequirements', selectedRequirements);
   };
 
-  const clientColor = getClientColor(client.id);
+  const clientColor = formData.color || getClientColor(client.id);
 
   return (
     <div className="bg-slate-50 p-6 rounded-lg shadow-md border border-slate-200 space-y-6">
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center space-x-3 w-full mr-4">
-          <div
-            className="w-6 h-6 rounded-full border border-slate-300 shadow-sm flex-shrink-0"
-            style={{ backgroundColor: clientColor }}
-            title="Schedule block color for this client"
-          />
+          <div className="relative group">
+            <input
+              type="color"
+              value={clientColor}
+              onChange={(e) => handleInputChange('color', e.target.value)}
+              className="w-8 h-8 rounded-full border border-slate-300 shadow-sm cursor-pointer overflow-hidden p-0"
+              style={{ backgroundColor: clientColor }}
+              title="Customize schedule block color"
+            />
+            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10">
+              Customize Color
+            </div>
+          </div>
           <input
               type="text"
               value={formData.name}
