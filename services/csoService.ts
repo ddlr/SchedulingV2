@@ -88,11 +88,14 @@ class FastScheduler {
                     if (ci >= 0 && !this.meetsInsurance(this.therapists[ti], this.clients[ci])) return;
                     schedule.push({ ...entry, id: generateId() });
                     tracker.book(ti, ci, s, l);
-                    if (entry.sessionType === 'ABA') tSessionCount[ti]++;
+                    if (entry.sessionType === 'ABA' || entry.sessionType.startsWith('AlliedHealth_')) tSessionCount[ti]++;
                 }
             });
         }
 
+        const ROLE_RANK: Record<string, number> = { "BCBA": 0, "CF": 1, "STAR 3": 2, "STAR 2": 3, "STAR 1": 4, "RBT": 5, "BT": 6, "Other": 7 };
+
+        // Pass 1: Lunches
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
         shuffledT.forEach(q => {
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
@@ -110,8 +113,32 @@ class FastScheduler {
             }
         });
 
-        const ROLE_RANK: Record<string, number> = { "BCBA": 0, "Clinical Fellow": 1, "RBT": 2, "3 STAR": 2, "Technician": 3, "BT": 4, "Other": 2 };
         const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
+
+        // Pass 2: Allied Health
+        shuffledC.forEach(target => {
+            target.c.alliedHealthNeeds.forEach(need => {
+                if (need.specificDays && !need.specificDays.includes(this.day)) return;
+                const len = Math.ceil(need.durationMinutes / SLOT_SIZE);
+                const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
+                for (let s = 0; s <= NUM_SLOTS - len; s++) {
+                    if (tracker.isCFree(target.ci, s, len)) {
+                        const possibleT = this.therapists.map((t, ti) => ({t, ti}))
+                            .filter(x => x.t.canProvideAlliedHealth.includes(need.type) && tracker.isTFree(x.ti, s, len))
+                            .sort((a, b) => (ROLE_RANK[b.t.role] || 0) - (ROLE_RANK[a.t.role] || 0));
+                        if (possibleT.length > 0) {
+                            const q = possibleT[0];
+                            schedule.push(this.ent(target.ci, q.ti, s, len, type));
+                            tracker.book(q.ti, target.ci, s, len);
+                            tSessionCount[q.ti]++;
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+
+        // Pass 3: ABA Sessions
         shuffledC.forEach(target => {
             for (let s = 0; s < NUM_SLOTS; s++) {
                 if (tracker.isCFree(target.ci, s, 1)) {
@@ -138,7 +165,7 @@ class FastScheduler {
                 }
             }
         });
-        return schedule.filter(e => e.sessionType !== 'IndirectTime' || schedule.some(s => s.therapistId === e.therapistId && s.sessionType !== 'IndirectTime'));
+        return schedule;
     }
 
     private isBTB(s: GeneratedSchedule, cid: string, tid: string, startSlot: number) {
@@ -159,14 +186,6 @@ class FastScheduler {
             const score = this.calculateScore(s);
             if (score < minScore) { best = s; minScore = score; if (minScore === 0) break; }
         }
-        const ROLE_PRIO: any = { "BCBA": 5, "Clinical Fellow": 4, "RBT": 3, "3 STAR": 3, "Technician": 2, "BT": 1, "Other": 0 };
-        this.therapists.sort((a, b) => (ROLE_PRIO[b.role] || 0) - (ROLE_PRIO[a.role] || 0)).forEach(th => {
-            for (let time = OP_START; time <= OP_END - 15; time += 15) {
-                if (!best.some(x => x.therapistId === th.id && sessionsOverlap(x.startTime, x.endTime, minutesToTime(time), minutesToTime(time + 15)))) {
-                    best.push({ id: generateId(), clientId: null, clientName: null, therapistId: th.id, therapistName: th.name, day: this.day, startTime: minutesToTime(time), endTime: minutesToTime(time + 15), sessionType: 'AdminTime' });
-                }
-            }
-        });
         return best;
     }
 
@@ -175,7 +194,7 @@ class FastScheduler {
         if (errs.length > 0) return 1000000 + errs.length;
         
         let penalty = 0;
-        const ROLE_PRIO: any = { "BCBA": 5, "Clinical Fellow": 4, "RBT": 3, "3 STAR": 3, "Technician": 2, "BT": 1, "Other": 0 };
+        const ROLE_PRIO: any = { "BCBA": 7, "CF": 6, "STAR 3": 5, "STAR 2": 4, "STAR 1": 3, "RBT": 2, "BT": 1, "Other": 0 };
         const billableTimes = new Map<string, number>();
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
