@@ -20,7 +20,7 @@ const loadTherapists = async () => {
     _therapists = (data || []).map(row => ({
       id: row.id,
       name: row.name,
-      role: row.role || "Technician",
+      role: row.role || "BT",
       teamId: row.team_id || undefined,
       qualifications: row.qualifications || [],
       canProvideAlliedHealth: row.can_provide_allied_health || []
@@ -156,7 +156,7 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Omi
           .from('therapists')
           .insert({
             name: therapistData.name,
-            role: therapistData.role || "Technician",
+            role: therapistData.role || "BT",
             team_id: therapistData.teamId || null,
             qualifications: therapistData.qualifications || [],
             can_provide_allied_health: therapistData.canProvideAlliedHealth || []

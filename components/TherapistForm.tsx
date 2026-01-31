@@ -49,7 +49,7 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
           <label htmlFor={`role-${therapist.id}`} className="block text-sm font-medium text-slate-600 mb-1">Role:</label>
           <select
             id={`role-${therapist.id}`}
-            value={formData.role || 'Technician'}
+            value={formData.role || 'BT'}
             onChange={(e) => handleInputChange('role', e.target.value as TherapistRole)}
             className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >

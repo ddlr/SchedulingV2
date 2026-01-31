@@ -112,7 +112,7 @@ const App: React.FC = () => {
   const handleAddClient = () => { setError(null); clientService.addClient({ name: 'New Client', teamId: '', insuranceRequirements: [], alliedHealthNeeds: [] }); };
   const handleUpdateClient = (updatedClient: Client) => clientService.updateClient(updatedClient);
   const handleRemoveClient = (clientId: string) => clientService.removeClient(clientId);
-  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', role: 'Technician', teamId: '', qualifications: [], canProvideAlliedHealth: [] }); };
+  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', role: 'BT', teamId: '', qualifications: [], canProvideAlliedHealth: [] }); };
   const handleUpdateTherapist = (updatedTherapist: Therapist) => therapistService.updateTherapist(updatedTherapist);
   const handleRemoveTherapist = (therapistId: string) => therapistService.removeTherapist(therapistId);
   const handleUpdateTeams = (updatedTeams: Team[]) => teamService.updateTeams(updatedTeams);

@@ -390,6 +390,7 @@ export const validateFullSchedule = (
           }, [] as {start: number, end: number}[]);
 
           const clientABASessionsToday = clientSessionsToday.filter(s => s.sessionType === 'ABA');
+          const clientAHSessionsToday = clientSessionsToday.filter(s => s.sessionType.startsWith('AlliedHealth_'));
 
           for (let intervalStart = opStartMinutes; intervalStart < opEndMinutes; intervalStart += 15) {
             const intervalEnd = intervalStart + 15;
@@ -398,6 +399,13 @@ export const validateFullSchedule = (
                 intervalStart < unavailablePeriod.end && intervalEnd > unavailablePeriod.start
             );
             if (isDuringClientCallout) continue; 
+
+            const isDuringAH = clientAHSessionsToday.some(session => {
+                const sessionStartMinutes = timeToMinutes(session.startTime);
+                const sessionEndMinutes = timeToMinutes(session.endTime);
+                return intervalStart < sessionEndMinutes && intervalEnd > sessionStartMinutes;
+            });
+            if (isDuringAH) continue;
 
             const isCoveredByABASession = clientABASessionsToday.some(session => {
                 const sessionStartMinutes = timeToMinutes(session.startTime);
