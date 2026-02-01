@@ -44,14 +44,16 @@ class FastScheduler {
     private day: DayOfWeek;
     private selectedDate: Date;
     private callouts: Callout[];
+    private otherDayEntries: GeneratedSchedule;
 
-    constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[]) {
+    constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
         this.clients = clients;
         this.therapists = therapists;
         this.insuranceQualifications = insuranceQualifications;
         this.day = day;
         this.selectedDate = selectedDate;
         this.callouts = callouts;
+        this.otherDayEntries = initialSchedule ? initialSchedule.filter(e => e.day !== day) : [];
     }
 
     private getRoleRank(role: string): number {
@@ -118,6 +120,17 @@ class FastScheduler {
         return max;
     }
 
+    private getMaxWeeklyMinutes(c: Client): number {
+        let max = Infinity;
+        c.insuranceRequirements.forEach(reqId => {
+            const q = this.insuranceQualifications.find(qual => qual.id === reqId);
+            if (q && q.maxHoursPerWeek !== undefined) {
+                if (q.maxHoursPerWeek * 60 < max) max = q.maxHoursPerWeek * 60;
+            }
+        });
+        return max;
+    }
+
     public createSchedule(initialSchedule?: GeneratedSchedule): GeneratedSchedule {
         const schedule: GeneratedSchedule = [];
         const tracker = new BitTracker(this.therapists.length, this.clients.length);
@@ -125,6 +138,13 @@ class FastScheduler {
         // Allow enough concurrent lunches to ensure remaining staff can cover all clients
         const maxConcurrentLunches = Math.max(1, this.therapists.length - this.clients.length);
         const tSessionCount = new Array(this.therapists.length).fill(0);
+        const clientMinutes = new Map<number, number>();
+        this.clients.forEach((c, ci) => {
+            const otherDayMins = this.otherDayEntries
+                .filter(e => e.clientId === c.id && (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')))
+                .reduce((sum, e) => sum + (timeToMinutes(e.endTime) - timeToMinutes(e.startTime)), 0);
+            clientMinutes.set(ci, otherDayMins);
+        });
 
         this.callouts.forEach(co => {
             if (isDateAffectedByCalloutRange(this.selectedDate, co.startDate, co.endDate)) {
@@ -159,7 +179,10 @@ class FastScheduler {
 
                     schedule.push({ ...entry, id: generateId() });
                     tracker.book(ti, ci, s, l);
-                    if (entry.sessionType === 'ABA' || entry.sessionType.startsWith('AlliedHealth_')) tSessionCount[ti]++;
+                    if (ci >= 0 && (entry.sessionType === 'ABA' || entry.sessionType.startsWith('AlliedHealth_'))) {
+                        tSessionCount[ti]++;
+                        clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
+                    }
                 }
             });
         }
@@ -197,6 +220,11 @@ class FastScheduler {
             target.c.alliedHealthNeeds.forEach(need => {
                 if (need.specificDays && !need.specificDays.includes(this.day)) return;
                 const len = Math.ceil(need.durationMinutes / SLOT_SIZE);
+
+                // Weekly Limit Check
+                const currentMins = clientMinutes.get(target.ci) || 0;
+                if (currentMins + (len * SLOT_SIZE) > this.getMaxWeeklyMinutes(target.c)) return;
+
                 const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
                 const slots = [];
                 for (let s = 0; s <= NUM_SLOTS - len; s++) slots.push(s);
@@ -221,6 +249,7 @@ class FastScheduler {
                             schedule.push(this.ent(target.ci, q.ti, s, len, type));
                             tracker.book(q.ti, target.ci, s, len);
                             tSessionCount[q.ti]++;
+                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                             break;
                         }
                     }
@@ -256,8 +285,13 @@ class FastScheduler {
 
                         // Try session lengths from max down to min required
                         const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
-                        const maxLenSlots = Math.max(Math.ceil(this.getMaxDuration(target.c) / SLOT_SIZE), minLenSlots);
-                        for (let len = maxLenSlots; len >= minLenSlots; len--) {
+                        const maxAllowedLenSlots = Math.ceil(this.getMaxDuration(target.c) / SLOT_SIZE);
+                        const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
+                        const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+
+                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots, Math.max(12, minLenSlots));
+
+                        for (let len = startLenSlots; len >= minLenSlots; len--) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                                 // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
                                 let gapAfter = 0;
@@ -272,6 +306,7 @@ class FastScheduler {
                                 schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
                                 tracker.book(q.ti, target.ci, s, len);
                                 tSessionCount[q.ti]++;
+                                clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                                 break;
                             }
                         }
@@ -374,7 +409,7 @@ export async function runCsoAlgorithm(
     initialScheduleForOptimization?: GeneratedSchedule
 ): Promise<GAGenerationResult> {
     const day = getDayOfWeekFromDate(selectedDate);
-    const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts);
+    const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
     const schedule = await algo.run(initialScheduleForOptimization);
     const errors = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
     return { schedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
