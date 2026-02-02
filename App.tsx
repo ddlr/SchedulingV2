@@ -29,6 +29,8 @@ import * as teamService from './services/teamService';
 import * as settingsService from './services/settingsService';
 import * as baseScheduleService from './services/baseScheduleService';
 import * as calloutService from './services/calloutService';
+import { subscribeToSystemConfig } from './services/systemConfigService';
+import { updateCachedConfig } from './constants';
 
 
 interface LoadingState {
@@ -92,8 +94,11 @@ const App: React.FC = () => {
     const unsubQualifications = settingsService.subscribeToInsuranceQualifications(setAvailableInsuranceQualifications);
     const unsubBaseSchedules = baseScheduleService.subscribeToBaseSchedules(setBaseSchedules);
     const unsubCallouts = calloutService.subscribeToCallouts(setCallouts);
+    const unsubSystemConfig = subscribeToSystemConfig((newConfig) => {
+      updateCachedConfig(newConfig);
+    });
     return () => {
-      unsubClients(); unsubTherapists(); unsubTeams(); unsubQualifications(); unsubBaseSchedules(); unsubCallouts();
+      unsubClients(); unsubTherapists(); unsubTeams(); unsubQualifications(); unsubBaseSchedules(); unsubCallouts(); unsubSystemConfig();
     };
   }, []);
 

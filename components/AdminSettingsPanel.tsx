@@ -5,6 +5,7 @@ import { DocumentArrowUpIcon } from './icons/DocumentArrowUpIcon';
 import { InformationCircleIcon } from './icons/InformationCircleIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import LoadingSpinner from './LoadingSpinner';
+import SystemConfigPanel from './SystemConfigPanel';
 
 const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   availableTeams,
@@ -132,12 +133,15 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   };
 
   return (
-    <div className="space-y-10 p-4 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-semibold text-slate-700 mb-6 border-b pb-3">Admin Settings - Bulk Operations</h2>
-      
-      {isLoading && <div className="flex justify-center items-center my-4"><LoadingSpinner /> <span className="ml-2">Processing file...</span></div>}
-      
-      {renderSummary()}
+    <div className="space-y-10">
+      <SystemConfigPanel />
+
+      <div className="p-4 bg-white rounded-lg shadow-md space-y-10">
+        <h2 className="text-2xl font-semibold text-slate-700 mb-6 border-b pb-3">Bulk Data Operations</h2>
+
+        {isLoading && <div className="flex justify-center items-center my-4"><LoadingSpinner /> <span className="ml-2">Processing file...</span></div>}
+
+        {renderSummary()}
 
       {/* Client Bulk Operations */}
       <section className="space-y-4 p-4 border border-slate-200 rounded-lg bg-slate-50">
@@ -206,10 +210,11 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
           </button>
         </div>
       </section>
-      <p className="text-xs text-slate-500 mt-6">
-        Note: CSV processing is done client-side. For Excel files (.xlsx, .xls), ensure the first sheet contains the data with the correct headers.
-        CSV files should be comma-separated. Header row is expected. Semicolons (;) are used as separators within multi-value fields like 'insuranceRequirements'.
-      </p>
+        <p className="text-xs text-slate-500 mt-6">
+          Note: CSV processing is done client-side. For Excel files (.xlsx, .xls), ensure the first sheet contains the data with the correct headers.
+          CSV files should be comma-separated. Header row is expected. Semicolons (;) are used as separators within multi-value fields like 'insuranceRequirements'.
+        </p>
+      </div>
     </div>
   );
 };

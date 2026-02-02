@@ -63,6 +63,29 @@ const initialSettings = [
   { key: 'insurance_qualifications', value: ['RBT', 'BCBA', 'Clinical Fellow', 'MD_MEDICAID', 'OT Certified', 'SLP Certified'] }
 ];
 
+const initialSystemConfig = [
+  {
+    id: 'default',
+    config_data: {
+      companyOperatingHoursStart: "09:00",
+      companyOperatingHoursEnd: "17:00",
+      staffAssumedAvailabilityStart: "08:45",
+      staffAssumedAvailabilityEnd: "17:15",
+      lunchCoverageStartTime: "11:00",
+      lunchCoverageEndTime: "14:00",
+      idealLunchWindowStart: "11:00",
+      idealLunchWindowEndForStart: "13:30",
+      teamColors: ['#FBBF24', '#34D399', '#60A5FA', '#F472B6', '#A78BFA', '#2DD4BF', '#F0ABFC', '#FCA5A5'],
+      allTherapistRoles: ["BCBA", "CF", "STAR 3", "STAR 2", "STAR 1", "RBT", "BT", "Other"],
+      defaultRoleRank: { "BCBA": 6, "CF": 5, "STAR 3": 4, "STAR 2": 3, "STAR 1": 2, "RBT": 1, "BT": 0, "Other": -1 },
+      allAlliedHealthServices: ["OT", "SLP"],
+      allSessionTypes: ['ABA', 'AlliedHealth_OT', 'AlliedHealth_SLP', 'IndirectTime'],
+      clientColorPalette: ['#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6', '#BCF60C', '#FABEBE', '#008080', '#E6BEFF', '#9A6324', '#FFFAC8', '#800000', '#AAFFC3', '#808000', '#FFD8B1', '#000075', '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF'],
+      workingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    }
+  }
+];
+
 class MockSupabase {
   public subscribers: Record<string, Function[]> = {};
 
@@ -119,6 +142,7 @@ class QueryBuilder {
       else if (table === 'therapists') data = initialTherapists;
       else if (table === 'clients') data = initialClients;
       else if (table === 'settings') data = initialSettings;
+      else if (table === 'system_config') data = initialSystemConfig;
       storage.setItem(key, JSON.stringify(data));
     }
   }
