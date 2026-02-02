@@ -59,7 +59,9 @@ export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Clie
         team_id: newClientData.teamId || null,
         color: newClientData.color || null,
         insurance_requirements: newClientData.insuranceRequirements || [],
-        allied_health_needs: newClientData.alliedHealthNeeds || []
+        allied_health_needs: newClientData.alliedHealthNeeds || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -159,7 +161,9 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
             team_id: clientData.teamId || null,
             color: clientData.color || null,
             insurance_requirements: clientData.insuranceRequirements || [],
-            allied_health_needs: clientData.alliedHealthNeeds || []
+            allied_health_needs: clientData.alliedHealthNeeds || [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           });
 
         addedCount++;

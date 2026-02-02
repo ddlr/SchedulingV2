@@ -69,7 +69,7 @@ VALUES (
     "idealLunchWindowStart": "11:00",
     "idealLunchWindowEndForStart": "13:30",
     "teamColors": ["#FBBF24", "#34D399", "#60A5FA", "#F472B6", "#A78BFA", "#2DD4BF", "#F0ABFC", "#FCA5A5"],
-    "allTherapistRoles": ["BCBA", "CF", "STAR 3", "STAR 2", "STAR 1", "RBT", "BT", "Other"],
+    "allStaffRoles": ["BCBA", "CF", "STAR 3", "STAR 2", "STAR 1", "RBT", "BT", "Other"],
     "defaultRoleRank": {
       "BCBA": 6,
       "CF": 5,
@@ -149,7 +149,7 @@ The system now stores these configurable values in the database:
 - `clientColorPalette` - Array of client block colors
 
 ### System Options
-- `allTherapistRoles` - Available therapist roles
+- `allStaffRoles` - Available staff roles
 - `defaultRoleRank` - Role hierarchy ranking
 - `allAlliedHealthServices` - Available allied health types
 - `allSessionTypes` - Available session types

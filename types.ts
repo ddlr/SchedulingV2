@@ -17,7 +17,7 @@ export interface Team {
 
 export type AlliedHealthServiceType = 'OT' | 'SLP';
 export type SessionType = 'ABA' | 'AlliedHealth_OT' | 'AlliedHealth_SLP' | 'IndirectTime' | 'AdminTime';
-export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RBT" | "BT" | "Other";
+export type StaffRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RBT" | "BT" | "Other";
 
 
 export interface AlliedHealthNeed {
@@ -30,7 +30,7 @@ export interface AlliedHealthNeed {
 
 export interface InsuranceQualification {
   id: string; // Unique identifier/name (e.g., "MD_MEDICAID", "RBT")
-  maxTherapistsPerDay?: number;
+  maxStaffPerDay?: number;
   minSessionDurationMinutes?: number;
   maxSessionDurationMinutes?: number;
   maxHoursPerWeek?: number;
@@ -43,16 +43,16 @@ export interface Client {
   teamId?: string;
   color?: string;
   /**
-   * List of qualifications (IDs) a therapist must have to work with this client.
+   * List of qualifications (IDs) a staff member must have to work with this client.
    */
   insuranceRequirements: string[];
   alliedHealthNeeds: AlliedHealthNeed[];
 }
 
-export interface Therapist {
+export interface Staff {
   id: string;
   name: string;
-  role: TherapistRole;
+  role: StaffRole;
   teamId?: string;
   qualifications: string[];
   canProvideAlliedHealth: AlliedHealthServiceType[];
@@ -61,9 +61,9 @@ export interface Therapist {
 export interface ScheduleEntry {
   id: string; // Unique ID for each entry
   clientName: string | null;
-  clientId: string | null; // New: ID of the client
-  therapistName: string;
-  therapistId: string; // New: ID of the therapist
+  clientId: string | null; // ID of the client
+  staffName: string;
+  staffId: string; // ID of the staff member
   day: DayOfWeek;
   startTime: string; // HH:MM
   endTime: string;   // HH:MM
@@ -81,19 +81,19 @@ export interface BaseScheduleConfig {
 
 export interface ClientFormProps {
   client: Client;
-  therapists: Therapist[];
+  staff: Staff[];
   availableTeams: Team[];
   availableInsuranceQualifications: InsuranceQualification[];
   onUpdate: (updatedClient: Client) => void;
   onRemove: (clientId: string) => void;
 }
 
-export interface TherapistFormProps {
-  therapist: Therapist;
+export interface StaffFormProps {
+  staff: Staff;
   availableTeams: Team[];
   availableInsuranceQualifications: InsuranceQualification[];
-  onUpdate: (updatedTherapist: Therapist) => void;
-  onRemove: (therapistId: string) => void;
+  onUpdate: (updatedStaff: Staff) => void;
+  onRemove: (staffId: string) => void;
 }
 
 export interface SettingsPanelProps {
@@ -105,13 +105,13 @@ export interface SettingsPanelProps {
 
 export interface ScheduleViewProps {
   schedule: GeneratedSchedule;
-  therapists: Therapist[]; // These are the *displayed* therapists
+  staff: Staff[]; // These are the *displayed* staff members
   clients: Client[];
   availableTeams: Team[];
   scheduledFullDate: Date | null;
-  onMoveScheduleEntry: (draggedEntryId: string, newTherapistId: string, newStartTime: string) => void;
+  onMoveScheduleEntry: (draggedEntryId: string, newStaffId: string, newStartTime: string) => void;
   onOpenEditSessionModal: (entry: ScheduleEntry) => void;
-  onOpenAddSessionModal: (therapistId: string, therapistName: string, startTime: string, day: DayOfWeek) => void;
+  onOpenAddSessionModal: (staffId: string, staffName: string, startTime: string, day: DayOfWeek) => void;
 }
 
 export interface ValidationError {
@@ -126,9 +126,9 @@ export interface SessionModalProps {
   onSave: (entry: ScheduleEntry) => void;
   onDelete?: (entry: ScheduleEntry) => void;
   sessionData: ScheduleEntry | null; // If editing, this is the entry
-  newSessionSlot: { therapistId: string; therapistName: string; startTime: string; day: DayOfWeek } | null; // If adding new
+  newSessionSlot: { staffId: string; staffName: string; startTime: string; day: DayOfWeek } | null; // If adding new
   clients: Client[];
-  therapists: Therapist[];
+  staff: Staff[];
   insuranceQualifications: InsuranceQualification[];
   availableSessionTypes: string[];
   timeSlots: string[];
@@ -150,13 +150,13 @@ export interface BaseScheduleManagerProps {
 
 export interface FilterControlsProps {
   allTeams: Team[];
-  allTherapists: Therapist[];
+  allStaff: Staff[];
   allClients: Client[];
   selectedTeamIds: string[];
-  selectedTherapistIds: string[];
+  selectedStaffIds: string[];
   selectedClientIds: string[];
   onTeamFilterChange: (ids: string[]) => void;
-  onTherapistFilterChange: (ids: string[]) => void;
+  onStaffFilterChange: (ids: string[]) => void;
   onClientFilterChange: (ids: string[]) => void;
   onClearFilters: () => void;
 }
@@ -174,7 +174,7 @@ export interface SearchableMultiSelectDropdownProps {
 // Updated Callout Types for date range
 export interface Callout {
   id: string;
-  entityType: 'client' | 'therapist';
+  entityType: 'client' | 'staff';
   entityId: string;
   entityName: string;
   startDate: string; // YYYY-MM-DD
@@ -185,7 +185,7 @@ export interface Callout {
 }
 
 export interface CalloutFormValues {
-  entityType: 'client' | 'therapist';
+  entityType: 'client' | 'staff';
   entityId: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;   // YYYY-MM-DD
@@ -216,7 +216,7 @@ export interface BulkOperationSummary {
 export interface AdminSettingsPanelProps {
   availableTeams: Team[];
   onBulkUpdateClients: (file: File, action: 'ADD_UPDATE' | 'REMOVE') => Promise<BulkOperationSummary>;
-  onBulkUpdateTherapists: (file: File, action: 'ADD_UPDATE' | 'REMOVE') => Promise<BulkOperationSummary>;
+  onBulkUpdateStaff: (file: File, action: 'ADD_UPDATE' | 'REMOVE') => Promise<BulkOperationSummary>;
   onUpdateInsuranceQualifications: (newQualifications: InsuranceQualification[]) => void;
 }
 

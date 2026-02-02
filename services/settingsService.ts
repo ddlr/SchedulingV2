@@ -3,7 +3,6 @@ import { InsuranceQualification } from '../types';
 
 let _qualifications: InsuranceQualification[] = [];
 const listeners: Array<(qualifications: InsuranceQualification[]) => void> = [];
-const SETTINGS_KEY = 'insurance_qualifications';
 
 const notifyListeners = () => {
   listeners.forEach(listener => listener([..._qualifications]));
@@ -12,41 +11,42 @@ const notifyListeners = () => {
 const loadQualifications = async () => {
   try {
     const { data, error } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', SETTINGS_KEY)
-      .maybeSingle();
+      .from('insurance_qualifications')
+      .select('*')
+      .order('id');
 
     if (error) throw error;
 
-    if (data && data.value) {
-      const rawValue = Array.isArray(data.value) ? data.value : [];
-      // Migration: Convert string array to InsuranceQualification objects
-      _qualifications = rawValue.map((item: any) => {
-        if (typeof item === 'string') {
-          return {
-            id: item,
-            maxTherapistsPerDay: item === 'MD_MEDICAID' ? 3 : undefined
-          };
-        }
-        return item as InsuranceQualification;
-      });
+    if (data && data.length > 0) {
+      _qualifications = data.map(row => ({
+        id: row.id,
+        maxStaffPerDay: row.max_staff_per_day ?? undefined,
+        minSessionDurationMinutes: row.min_session_duration_minutes ?? undefined,
+        maxSessionDurationMinutes: row.max_session_duration_minutes ?? undefined,
+        maxHoursPerWeek: row.max_hours_per_week ?? undefined,
+        roleHierarchyOrder: row.role_hierarchy_order ?? undefined,
+      }));
     } else {
-      _qualifications = [
+      // If table is empty, we could insert defaults, but the migration should have handled it.
+      // For safety, if it's still empty, we'll initialize it.
+      const defaults: InsuranceQualification[] = [
         { id: 'BCBA' },
         { id: 'Clinical Fellow' },
-        { id: 'MD_MEDICAID', maxTherapistsPerDay: 3 },
+        { id: 'MD_MEDICAID', maxStaffPerDay: 3 },
         { id: 'RBT' }
       ];
-      await supabase
-        .from('settings')
-        .insert({
-          key: SETTINGS_KEY,
-          value: _qualifications
+
+      for (const item of defaults) {
+        await supabase.from('insurance_qualifications').insert({
+          id: item.id,
+          max_staff_per_day: item.maxStaffPerDay || null
         });
+      }
+
+      // Reload after insertion
+      return loadQualifications();
     }
 
-    _qualifications = _qualifications.sort((a, b) => a.id.localeCompare(b.id));
     notifyListeners();
   } catch (error) {
     console.error("Error loading qualifications from Supabase:", error);
@@ -58,12 +58,11 @@ loadQualifications();
 
 const setupRealtimeSubscription = () => {
   supabase
-    .channel('settings_changes')
+    .channel('insurance_qualifications_changes')
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
-      table: 'settings',
-      filter: `key=eq.${SETTINGS_KEY}`
+      table: 'insurance_qualifications'
     }, () => {
       loadQualifications();
     })
@@ -78,19 +77,31 @@ export const getInsuranceQualifications = (): InsuranceQualification[] => {
 
 export const updateInsuranceQualifications = async (updatedQualifications: InsuranceQualification[]): Promise<InsuranceQualification[]> => {
   try {
-    const sortedQualifications = [...updatedQualifications].sort((a, b) => a.id.localeCompare(b.id));
+    const existingIds = _qualifications.map(q => q.id);
+    const updatedIds = updatedQualifications.map(q => q.id);
 
-    const { error } = await supabase
-      .from('settings')
-      .upsert({
-        key: SETTINGS_KEY,
-        value: sortedQualifications,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'key'
-      });
+    // Delete removed ones
+    const toDelete = existingIds.filter(id => !updatedIds.includes(id));
+    for (const id of toDelete) {
+        await supabase.from('insurance_qualifications').delete().eq('id', id);
+    }
 
-    if (error) throw error;
+    // Upsert current ones
+    for (const q of updatedQualifications) {
+        await supabase
+          .from('insurance_qualifications')
+          .upsert({
+            id: q.id,
+            max_staff_per_day: q.maxStaffPerDay ?? null,
+            min_session_duration_minutes: q.minSessionDurationMinutes ?? null,
+            max_session_duration_minutes: q.maxSessionDurationMinutes ?? null,
+            max_hours_per_week: q.maxHoursPerWeek ?? null,
+            role_hierarchy_order: q.roleHierarchyOrder ?? null,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'id'
+          });
+    }
 
     await loadQualifications();
     return [..._qualifications];

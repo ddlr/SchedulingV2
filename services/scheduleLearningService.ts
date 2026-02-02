@@ -1,5 +1,5 @@
 
-import { GeneratedSchedule, ScheduleEntry, Client, Therapist, ValidationError } from '../types';
+import { GeneratedSchedule, ScheduleEntry, Client, Staff, ValidationError } from '../types';
 import { supabase } from '../lib/supabase';
 import { timeToMinutes, minutesToTime } from '../utils/validationService';
 
@@ -131,11 +131,11 @@ export class ScheduleLearningService {
   private static extractPatterns(schedule: GeneratedSchedule): LearnedPattern[] {
     const patterns: LearnedPattern[] = [];
 
-    const therapistLunches = this.extractLunchPatterns(schedule);
-    if (therapistLunches.length > 0) {
+    const staffLunches = this.extractLunchPatterns(schedule);
+    if (staffLunches.length > 0) {
       patterns.push({
         type: 'lunch_stagger',
-        data: { lunches: therapistLunches },
+        data: { lunches: staffLunches },
         effectivenessScore: 0,
         sampleCount: 1
       });
@@ -151,11 +151,11 @@ export class ScheduleLearningService {
       });
     }
 
-    const therapistLoadDistribution = this.extractLoadDistribution(schedule);
-    if (therapistLoadDistribution.length > 0) {
+    const staffLoadDistribution = this.extractLoadDistribution(schedule);
+    if (staffLoadDistribution.length > 0) {
       patterns.push({
         type: 'load_distribution',
-        data: { distribution: therapistLoadDistribution },
+        data: { distribution: staffLoadDistribution },
         effectivenessScore: 0,
         sampleCount: 1
       });
@@ -165,14 +165,14 @@ export class ScheduleLearningService {
   }
 
   private static extractLunchPatterns(schedule: GeneratedSchedule): Array<{
-    therapistId: string;
+    staffId: string;
     startTime: string;
     endTime: string;
   }> {
     return schedule
       .filter(s => s.sessionType === 'IndirectTime')
       .map(s => ({
-        therapistId: s.therapistId,
+        staffId: s.staffId,
         startTime: s.startTime,
         endTime: s.endTime
       }));
@@ -200,24 +200,24 @@ export class ScheduleLearningService {
   }
 
   private static extractLoadDistribution(schedule: GeneratedSchedule): Array<{
-    therapistId: string;
+    staffId: string;
     billableMinutes: number;
     clientCount: number;
   }> {
-    const therapistStats = new Map<
+    const staffStats = new Map<
       string,
       { billableMinutes: number; clientIds: Set<string> }
     >();
 
     schedule.forEach(entry => {
-      if (!therapistStats.has(entry.therapistId)) {
-        therapistStats.set(entry.therapistId, {
+      if (!staffStats.has(entry.staffId)) {
+        staffStats.set(entry.staffId, {
           billableMinutes: 0,
           clientIds: new Set()
         });
       }
 
-      const stats = therapistStats.get(entry.therapistId)!;
+      const stats = staffStats.get(entry.staffId)!;
       if (entry.sessionType !== 'IndirectTime') {
         stats.billableMinutes += timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
         if (entry.clientId) {
@@ -226,8 +226,8 @@ export class ScheduleLearningService {
       }
     });
 
-    return Array.from(therapistStats.entries()).map(([therapistId, stats]) => ({
-      therapistId,
+    return Array.from(staffStats.entries()).map(([staffId, stats]) => ({
+      staffId,
       billableMinutes: stats.billableMinutes,
       clientCount: stats.clientIds.size
     }));

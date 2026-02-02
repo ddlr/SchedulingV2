@@ -1,6 +1,6 @@
 
-import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, AlliedHealthServiceType, ValidationError, Callout, InsuranceQualification, TherapistRole } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
+import { ScheduleEntry, GeneratedSchedule, Client, Staff, DayOfWeek, AlliedHealthServiceType, ValidationError, Callout, InsuranceQualification, StaffRole } from '../types';
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_STAFF_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
 
 export const timeToMinutes = (time: string): number => {
   if (!time) return 0;
@@ -47,12 +47,12 @@ export const validateSessionEntry = (
   entryToValidate: ScheduleEntry,
   currentSchedule: GeneratedSchedule,
   clients: Client[],
-  therapists: Therapist[],
+  staff: Staff[],
   insuranceQualifications: InsuranceQualification[],
   originalEntryForEditId?: string | null
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
-  const { clientId, clientName, therapistId, therapistName, day, startTime, endTime, sessionType } = entryToValidate;
+  const { clientId, clientName, staffId, staffName, day, startTime, endTime, sessionType } = entryToValidate;
 
   if (!startTime || !endTime) {
     errors.push({ ruleId: "MISSING_TIMES", message: "Session start and end times are required." });
@@ -66,15 +66,15 @@ export const validateSessionEntry = (
     errors.push({ ruleId: "INVALID_TIME_ORDER", message: "Session end time must be after start time." });
   }
 
-  const therapistData = therapists.find(t => t.id === therapistId);
-  if (!therapistData) {
-     errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
+  const staffData = staff.find(t => t.id === staffId);
+  if (!staffData) {
+     errors.push({ ruleId: "STAFF_NOT_FOUND", message: `Staff "${staffName}" (ID: ${staffId}) not found.`});
   } else {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
         endTimeMinutes > timeToMinutes(STAFF_ASSUMED_AVAILABILITY_END)) {
       errors.push({
-          ruleId: "OUTSIDE_THERAPIST_AVAILABILITY",
-          message: `Session for ${therapistName} (${to12HourTime(startTime)}-${to12HourTime(endTime)}) is outside their availability window (${to12HourTime(STAFF_ASSUMED_AVAILABILITY_START)} - ${to12HourTime(STAFF_ASSUMED_AVAILABILITY_END)}).`
+          ruleId: "OUTSIDE_STAFF_AVAILABILITY",
+          message: `Session for ${staffName} (${to12HourTime(startTime)}-${to12HourTime(endTime)}) is outside their availability window (${to12HourTime(STAFF_ASSUMED_AVAILABILITY_START)} - ${to12HourTime(STAFF_ASSUMED_AVAILABILITY_END)}).`
       });
     }
   }
@@ -100,12 +100,12 @@ export const validateSessionEntry = (
     if (originalEntryForEditId && existingEntry.id === originalEntryForEditId) return;
     if (existingEntry.id === entryToValidate.id && originalEntryForEditId !== entryToValidate.id) return; 
 
-    if (existingEntry.therapistId === therapistId &&
+    if (existingEntry.staffId === staffId &&
         existingEntry.day === day &&
         sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
-          ruleId: "THERAPIST_TIME_CONFLICT",
-          message: `Therapist ${therapistName} is already booked from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)} with ${existingEntry.clientName || 'Indirect Task'}.`,
+          ruleId: "STAFF_TIME_CONFLICT",
+          message: `Staff ${staffName} is already booked from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)} with ${existingEntry.clientName || 'Indirect Task'}.`,
           details: { entryId: entryToValidate.id, conflictingEntryId: existingEntry.id }
       });
     }
@@ -115,19 +115,19 @@ export const validateSessionEntry = (
         sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
           ruleId: "CLIENT_TIME_CONFLICT",
-          message: `Client ${clientName} is already scheduled with ${existingEntry.therapistName} from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)}.`,
+          message: `Client ${clientName} is already scheduled with ${existingEntry.staffName} from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)}.`,
           details: { entryId: entryToValidate.id, conflictingEntryId: existingEntry.id }
       });
     }
 
     // Check for back-to-back same client sessions (no break allowed)
     if (clientId && existingEntry.clientId === clientId &&
-        existingEntry.therapistId === therapistId &&
+        existingEntry.staffId === staffId &&
         existingEntry.day === day &&
         (existingEntry.endTime === startTime || existingEntry.startTime === endTime)) {
       errors.push({
           ruleId: "SAME_CLIENT_BACK_TO_BACK",
-          message: `Therapist ${therapistName} cannot work with client ${clientName} back-to-back without a break. There must be at least a 15-minute gap or a different session between consecutive sessions with the same client.`,
+          message: `Staff ${staffName} cannot work with client ${clientName} back-to-back without a break. There must be at least a 15-minute gap or a different session between consecutive sessions with the same client.`,
           details: { entryId: entryToValidate.id, conflictingEntryId: existingEntry.id }
       });
     }
@@ -138,19 +138,19 @@ export const validateSessionEntry = (
     if (!clientData) {
         errors.push({ ruleId: "CLIENT_NOT_FOUND", message: `Client "${clientName}" (ID: ${clientId}) not found.`});
     } else {
-        if (therapistData && clientData.insuranceRequirements.length > 0) {
+        if (staffData && clientData.insuranceRequirements.length > 0) {
             const unmetRequirements = clientData.insuranceRequirements.filter(reqId => {
               // 1. Direct match in qualifications
-              if (therapistData.qualifications.includes(reqId)) return false;
+              if (staffData.qualifications.includes(reqId)) return false;
 
               // 2. Role hierarchy match
               const requiredRank = getRoleRank(reqId, insuranceQualifications);
-              const therapistRank = getRoleRank(therapistData.role, insuranceQualifications);
+              const staffRank = getRoleRank(staffData.role, insuranceQualifications);
 
-              if (therapistRank >= requiredRank && requiredRank !== -1) return false;
+              if (staffRank >= requiredRank && requiredRank !== -1) return false;
 
               // 3. Special case for RBT/BT credential if the requirement is exactly the role name
-              if (therapistData.role === reqId) return false;
+              if (staffData.role === reqId) return false;
 
               return true;
             });
@@ -158,7 +158,7 @@ export const validateSessionEntry = (
             if (unmetRequirements.length > 0) {
               errors.push({
                   ruleId: "INSURANCE_MISMATCH",
-                  message: `Therapist ${therapistName} (${therapistData.role}) does not meet requirements for ${clientName}: ${unmetRequirements.join(', ')}.`,
+                  message: `Staff ${staffName} (${staffData.role}) does not meet requirements for ${clientName}: ${unmetRequirements.join(', ')}.`,
                   details: { entryId: entryToValidate.id }
               });
             }
@@ -191,18 +191,18 @@ export const validateSessionEntry = (
 
   if (sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP') {
     const serviceType = sessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
-    if (therapistData && !therapistData.canProvideAlliedHealth.includes(serviceType)) {
+    if (staffData && !staffData.canProvideAlliedHealth.includes(serviceType)) {
       errors.push({
           ruleId: "ALLIED_HEALTH_QUALIFICATION_MISSING",
-          message: `Therapist ${therapistName} cannot provide ${serviceType} services.`,
+          message: `Staff ${staffName} cannot provide ${serviceType} services.`,
           details: { entryId: entryToValidate.id }
       });
     }
     const requiredQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified"; 
-     if (therapistData && !therapistData.qualifications.includes(requiredQual)) {
+     if (staffData && !staffData.qualifications.includes(requiredQual)) {
         errors.push({
           ruleId: "ALLIED_HEALTH_CERTIFICATION_MISSING",
-          message: `Therapist ${therapistName} lacks qualification "${requiredQual}" for ${serviceType}.`,
+          message: `Staff ${staffName} lacks qualification "${requiredQual}" for ${serviceType}.`,
           details: { entryId: entryToValidate.id }
       });
      }
@@ -276,7 +276,7 @@ export const isDateAffectedByCalloutRange = (currentDate: Date, calloutStartDate
 export const validateFullSchedule = (
   scheduleToValidate: GeneratedSchedule,
   clients: Client[],
-  therapists: Therapist[],
+  staff: Staff[],
   insuranceQualifications: InsuranceQualification[],
   selectedDate: Date | null, 
   operatingHoursStart: string,
@@ -286,7 +286,7 @@ export const validateFullSchedule = (
   let allErrors: ValidationError[] = [];
 
   if (!scheduleToValidate) return [];
-  if (scheduleToValidate.length === 0 && clients.length === 0 && therapists.length === 0 && !selectedDate) return [];
+  if (scheduleToValidate.length === 0 && clients.length === 0 && staff.length === 0 && !selectedDate) return [];
 
   if (!selectedDate || !(selectedDate instanceof Date) || isNaN(selectedDate.getTime())) {
     allErrors.push({ ruleId: "INVALID_SELECTED_DATE", message: "Selected date for validation is invalid." });
@@ -301,18 +301,18 @@ export const validateFullSchedule = (
     // Aggregate checks (like weekly hours) are handled separately below for the whole schedule.
     if (entryToValidate.day !== currentDayOfWeekString) return;
 
-    const entryErrors = validateSessionEntry(entryToValidate, scheduleToValidate, clients, therapists, insuranceQualifications, entryToValidate.id);
+    const entryErrors = validateSessionEntry(entryToValidate, scheduleToValidate, clients, staff, insuranceQualifications, entryToValidate.id);
 
     if (entryErrors.length > 0) {
       allErrors = [...allErrors, ...entryErrors.map(e => ({
           ...e,
-          message: `Entry (${entryToValidate.therapistName} with ${entryToValidate.clientName || 'N/A'} at ${to12HourTime(entryToValidate.startTime)} on ${entryToValidate.day}, ID: ${entryToValidate.id}): ${e.message}`
+          message: `Entry (${entryToValidate.staffName} with ${entryToValidate.clientName || 'N/A'} at ${to12HourTime(entryToValidate.startTime)} on ${entryToValidate.day}, ID: ${entryToValidate.id}): ${e.message}`
       }))];
     }
 
     const entryCallouts = callouts.filter(co =>
         isDateAffectedByCalloutRange(selectedDate, co.startDate, co.endDate) && 
-        ( (co.entityType === 'therapist' && co.entityId === entryToValidate.therapistId) ||
+        ( (co.entityType === 'staff' && co.entityId === entryToValidate.staffId) ||
           (co.entityType === 'client' && co.entityId === entryToValidate.clientId) ) &&
         sessionsOverlap(entryToValidate.startTime, entryToValidate.endTime, co.startTime, co.endTime)
     );
@@ -321,36 +321,36 @@ export const validateFullSchedule = (
         entryCallouts.forEach(co => {
             allErrors.push({
                 ruleId: "SESSION_OVERLAPS_CALLOUT",
-                message: `Session for ${entryToValidate.therapistName} with ${entryToValidate.clientName || 'N/A'} (${to12HourTime(entryToValidate.startTime)}-${to12HourTime(entryToValidate.endTime)}, ID: ${entryToValidate.id}) overlaps with ${co.entityType} ${co.entityName}'s callout (${to12HourTime(co.startTime)}-${to12HourTime(co.endTime)}). Reason: ${co.reason || 'N/A'}`
+                message: `Session for ${entryToValidate.staffName} with ${entryToValidate.clientName || 'N/A'} (${to12HourTime(entryToValidate.startTime)}-${to12HourTime(entryToValidate.endTime)}, ID: ${entryToValidate.id}) overlaps with ${co.entityType} ${co.entityName}'s callout (${to12HourTime(co.startTime)}-${to12HourTime(co.endTime)}). Reason: ${co.reason || 'N/A'}`
             });
         });
     }
   });
 
-  const scheduledTherapistIds = new Set(scheduleToValidate.map(s => s.therapistId));
-  scheduledTherapistIds.forEach(therapistId => {
-    const therapist = therapists.find(t => t.id === therapistId);
-    if (!therapist) return; 
+  const scheduledStaffIds = new Set(scheduleToValidate.map(s => s.staffId));
+  scheduledStaffIds.forEach(staffId => {
+    const foundStaff = staff.find(t => t.id === staffId);
+    if (!foundStaff) return;
 
-    const therapistSessions = scheduleToValidate.filter(s => s.therapistId === therapistId && s.day === currentDayOfWeekString);
+    const staffSessions = scheduleToValidate.filter(s => s.staffId === staffId && s.day === currentDayOfWeekString);
     
-    const billableSessions = therapistSessions.filter(s => s.sessionType === 'ABA' || s.sessionType === 'AlliedHealth_OT' || s.sessionType === 'AlliedHealth_SLP');
+    const billableSessions = staffSessions.filter(s => s.sessionType === 'ABA' || s.sessionType === 'AlliedHealth_OT' || s.sessionType === 'AlliedHealth_SLP');
     if (billableSessions.length > 4) {
       allErrors.push({
         ruleId: "MAX_NOTES_EXCEEDED",
-        message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), which is high.`
+        message: `Staff ${foundStaff.name} has ${billableSessions.length} billable sessions (notes), which is high.`
       });
     }
 
     // BCBA Direct Time check
-    if(therapist.qualifications.includes("BCBA") && billableSessions.length === 0 && therapistSessions.length > 0){
+    if(foundStaff.qualifications.includes("BCBA") && billableSessions.length === 0 && staffSessions.length > 0){
         allErrors.push({
             ruleId: "BCBA_NO_DIRECT_TIME",
-            message: `Therapist ${therapist.name} is a BCBA but has no direct client time scheduled.`
+            message: `Staff ${foundStaff.name} is a BCBA but has no direct client time scheduled.`
         });
     }
 
-    const lunchSessions = therapistSessions.filter(s =>
+    const lunchSessions = staffSessions.filter(s =>
         (s.sessionType === 'IndirectTime' || s.sessionType === 'AdminTime') && s.clientId === null
     );
 
@@ -358,7 +358,7 @@ export const validateFullSchedule = (
         if (lunchSessions.length === 0) {
             allErrors.push({
                 ruleId: "MISSING_LUNCH_BREAK",
-                message: `Therapist ${therapist.name} has billable work but no lunch break scheduled.`
+                message: `Staff ${foundStaff.name} has billable work but no lunch break scheduled.`
             });
         } else { 
             // Check if AT LEAST ONE session is a valid lunch (IndirectTime in window)
@@ -374,27 +374,27 @@ export const validateFullSchedule = (
             if (validLunches.length === 0) {
                 allErrors.push({
                     ruleId: "LUNCH_OUTSIDE_WINDOW",
-                    message: `Therapist ${therapist.name} has no valid lunch break (30min IndirectTime) within the core window (${to12HourTime(LUNCH_COVERAGE_START_TIME)} - ${to12HourTime(LUNCH_COVERAGE_END_TIME)}).`
+                    message: `Staff ${foundStaff.name} has no valid lunch break (30min IndirectTime) within the core window (${to12HourTime(LUNCH_COVERAGE_START_TIME)} - ${to12HourTime(LUNCH_COVERAGE_END_TIME)}).`
                 });
             } else if (validLunches.length > 1) {
                 allErrors.push({
                     ruleId: "MULTIPLE_LUNCHES",
-                    message: `Therapist ${therapist.name} has ${validLunches.length} lunch sessions in the core window. Only one is allowed.`
+                    message: `Staff ${foundStaff.name} has ${validLunches.length} lunch sessions in the core window. Only one is allowed.`
                 });
             }
         }
     } else if (lunchSessions.length > 0) { 
          allErrors.push({
             ruleId: "LUNCH_WITHOUT_BILLABLE_WORK",
-            message: `Therapist ${therapist.name} has a lunch break scheduled but no billable work.`
+            message: `Staff ${foundStaff.name} has a lunch break scheduled but no billable work.`
         });
     }
 
-    if (isWeekendDay && therapistSessions.length > 0) {
-      if (therapistSessions.some(s => s.sessionType === 'ABA')) { 
+    if (isWeekendDay && staffSessions.length > 0) {
+      if (staffSessions.some(s => s.sessionType === 'ABA')) {
          allErrors.push({
-          ruleId: "THERAPIST_WEEKEND_ABA",
-          message: `Therapist ${therapist.name} has an ABA session scheduled on a weekend, which is not permitted.`
+          ruleId: "STAFF_WEEKEND_ABA",
+          message: `Staff ${foundStaff.name} has an ABA session scheduled on a weekend, which is not permitted.`
         });
       }
     }
@@ -415,18 +415,18 @@ export const validateFullSchedule = (
           let limitingQualId = '';
 
           applicableQuals.forEach(q => {
-              if (q.maxTherapistsPerDay !== undefined && q.maxTherapistsPerDay < maxProvidersAllowed) {
-                  maxProvidersAllowed = q.maxTherapistsPerDay;
+              if (q.maxStaffPerDay !== undefined && q.maxStaffPerDay < maxProvidersAllowed) {
+                  maxProvidersAllowed = q.maxStaffPerDay;
                   limitingQualId = q.id;
               }
           });
 
           if (maxProvidersAllowed !== Infinity) {
-              const uniqueTherapists = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_')).map(s => s.therapistId));
-              if (uniqueTherapists.size > maxProvidersAllowed) {
+              const uniqueStaff = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_')).map(s => s.staffId));
+              if (uniqueStaff.size > maxProvidersAllowed) {
                   allErrors.push({
                       ruleId: "MAX_PROVIDERS_VIOLATED",
-                      message: `Client ${client.name} is scheduled with ${uniqueTherapists.size} unique providers on ${day}, exceeding the limit of ${maxProvidersAllowed} set by ${limitingQualId}.`
+                      message: `Client ${client.name} is scheduled with ${uniqueStaff.size} unique providers on ${day}, exceeding the limit of ${maxProvidersAllowed} set by ${limitingQualId}.`
                   });
               }
           }

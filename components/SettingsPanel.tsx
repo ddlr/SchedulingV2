@@ -199,8 +199,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <td className="px-4 py-3 whitespace-nowrap">
                       <input
                         type="number"
-                        value={iq.maxTherapistsPerDay ?? ''}
-                        onChange={(e) => handleUpdateIQField(iq.id, 'maxTherapistsPerDay', e.target.value)}
+                        value={iq.maxStaffPerDay ?? ''}
+                        onChange={(e) => handleUpdateIQField(iq.id, 'maxStaffPerDay', e.target.value)}
                         className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                         placeholder="N/A"
                       />

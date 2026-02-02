@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { GeneratedSchedule, DayOfWeek, ScheduleEntry, Therapist, SessionType, Team, ScheduleViewProps } from '../types';
+import { GeneratedSchedule, DayOfWeek, ScheduleEntry, Staff, SessionType, Team, ScheduleViewProps } from '../types';
 import { TIME_SLOTS_H_MM, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
 import { UserGroupIcon } from './icons/UserGroupIcon';
 import { PencilIcon } from './icons/PencilIcon';
@@ -66,7 +66,7 @@ const getDayOfWeekFromDate = (date: Date | null): DayOfWeek | null => {
 
 const ScheduleView: React.FC<ScheduleViewProps> = ({
     schedule,
-    therapists: therapistsToDisplay,
+    staff: staffToDisplay,
     clients,
     availableTeams,
     scheduledFullDate,
@@ -96,21 +96,21 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   const daySchedule = schedule.filter(entry => entry.day === scheduledDayOfWeek);
 
   const teamsData = useMemo(() => {
-    return therapistsToDisplay.reduce((acc, therapist) => {
-      const teamId = therapist.teamId || 'UnassignedTeam';
+    return staffToDisplay.reduce((acc, staff) => {
+      const teamId = staff.teamId || 'UnassignedTeam';
       if (!acc[teamId]) {
           const teamInfo = availableTeams.find(t => t.id === teamId);
           acc[teamId] = {
-            therapists: [],
+            staff: [],
             color: teamInfo?.color || '#E2E8F0',
             name: teamInfo?.name || 'Unassigned'
           };
       }
-      acc[teamId].therapists.push(therapist);
-      acc[teamId].therapists.sort((a,b) => a.name.localeCompare(b.name));
+      acc[teamId].staff.push(staff);
+      acc[teamId].staff.sort((a,b) => a.name.localeCompare(b.name));
       return acc;
-    }, {} as Record<string, { therapists: Therapist[]; color?: string; name: string }>);
-  }, [therapistsToDisplay, availableTeams]);
+    }, {} as Record<string, { staff: Staff[]; color?: string; name: string }>);
+  }, [staffToDisplay, availableTeams]);
 
   const sortedTeamIds = useMemo(() => Object.keys(teamsData).sort((a, b) => {
     const teamAName = teamsData[a].name;
@@ -124,11 +124,11 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  if (therapistsToDisplay.length === 0) {
+  if (staffToDisplay.length === 0) {
      return (
       <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
         <h3 className="text-2xl font-semibold text-blue-600 mb-4 pb-2 border-b-2 border-blue-200">{formattedDate}</h3>
-        <p className="text-slate-500 italic">No therapists match the current filters for {formattedDate}, or no therapists have been added.</p>
+        <p className="text-slate-500 italic">No staff match the current filters for {formattedDate}, or no staff have been added.</p>
       </div>
     );
   }
@@ -153,14 +153,14 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     e.currentTarget.classList.remove('bg-sky-100');
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLTableCellElement>, targetTherapistId: string, targetTimeSlot: string) => {
+  const handleDrop = (e: React.DragEvent<HTMLTableCellElement>, targetStaffId: string, targetTimeSlot: string) => {
     e.preventDefault();
     e.currentTarget.classList.remove('bg-sky-100');
     const draggedDataJson = e.dataTransfer.getData('application/json');
     if (draggedDataJson) {
       const { entryId } = JSON.parse(draggedDataJson);
       if (entryId) {
-        onMoveScheduleEntry(entryId, targetTherapistId, targetTimeSlot);
+        onMoveScheduleEntry(entryId, targetStaffId, targetTimeSlot);
       }
     }
   };
@@ -202,7 +202,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
               <th className="sticky left-0 bg-slate-100 p-2 border border-slate-300 text-sm font-medium text-slate-600 w-24 z-10">Time</th>
               {sortedTeamIds.map(teamId => (
                 <th key={teamId}
-                    colSpan={teamsData[teamId].therapists.length}
+                    colSpan={teamsData[teamId].staff.length}
                     className="p-2 border border-slate-300 text-sm font-medium text-center"
                     style={{ backgroundColor: teamsData[teamId].color, color: teamsData[teamId].color === '#E2E8F0' ? '#1E293B' : 'white' }}>
                   {teamsData[teamId].name}
@@ -212,9 +212,9 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             <tr className="bg-slate-50">
                 <th className="sticky left-0 bg-slate-50 p-2 border border-slate-300 text-sm font-medium text-slate-600 w-24 z-10"></th>
                 {sortedTeamIds.map(teamId => (
-                    teamsData[teamId].therapists.map(therapist => (
-                    <th key={therapist.id} className="p-2 border border-slate-300 text-sm font-medium text-slate-600 min-w-[150px]">
-                        {therapist.name}
+                    teamsData[teamId].staff.map(staff => (
+                    <th key={staff.id} className="p-2 border border-slate-300 text-sm font-medium text-slate-600 min-w-[150px]">
+                        {staff.name}
                     </th>
                     ))
                 ))}
@@ -227,9 +227,9 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <tr key={timeSlot}>
                   <td className="sticky left-0 bg-white p-2 border border-slate-300 text-xs text-slate-500 text-center font-medium w-24 z-10 h-8">{to12HourTime(timeSlot)}</td>
                    {sortedTeamIds.map(teamId => (
-                    teamsData[teamId].therapists.map(therapist => {
+                    teamsData[teamId].staff.map(staff => {
                         const entryForCell = daySchedule.find(entry =>
-                        entry.therapistId === therapist.id &&
+                        entry.staffId === staff.id &&
                         timeToMinutes(entry.startTime) === currentTimeSlotStartMinutes
                         );
 
@@ -249,8 +249,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                                     onDragStart={(e) => handleDragStart(e, entryForCell)}
                                     onDragEnd={handleDragEnd}
                                     onClick={() => onOpenEditSessionModal(entryForCell)}
-                                    title={`Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
-                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}. Click to edit or drag to move.`}
+                                    title={`Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.staffName}`}
+                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.staffName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}. Click to edit or drag to move.`}
                                 >
                                 <div className="flex items-start justify-between gap-1">
                                   <div className="flex-1 min-w-0">
@@ -270,7 +270,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                         }
 
                         const isCoveredByPrior = daySchedule.some(entry =>
-                            entry.therapistId === therapist.id &&
+                            entry.staffId === staff.id &&
                             timeToMinutes(entry.startTime) < currentTimeSlotStartMinutes &&
                             timeToMinutes(entry.endTime) > currentTimeSlotStartMinutes
                         );
@@ -279,14 +279,14 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                         return (
                             <td
-                                key={`${therapist.id}-${timeSlot}-empty`}
+                                key={`${staff.id}-${timeSlot}-empty`}
                                 className="p-2 border border-slate-200 h-8 hover:bg-sky-50 hover:border-sky-300 transition-all cursor-pointer group relative"
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
-                                onDrop={(e) => handleDrop(e, therapist.id, timeSlot)}
-                                onClick={() => onOpenAddSessionModal(therapist.id, therapist.name, timeSlot, scheduledDayOfWeek)}
-                                title={`Add session for ${therapist.name} at ${to12HourTime(timeSlot)}`}
-                                aria-label={`Empty slot for ${therapist.name} at ${to12HourTime(timeSlot)}. Click to add or drag a session here.`}
+                                onDrop={(e) => handleDrop(e, staff.id, timeSlot)}
+                                onClick={() => onOpenAddSessionModal(staff.id, staff.name, timeSlot, scheduledDayOfWeek)}
+                                title={`Add session for ${staff.name} at ${to12HourTime(timeSlot)}`}
+                                aria-label={`Empty slot for ${staff.name} at ${to12HourTime(timeSlot)}. Click to add or drag a session here.`}
                             >
                               <span className="opacity-0 group-hover:opacity-100 text-sky-500 text-xs font-medium flex items-center justify-center gap-1">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -303,7 +303,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             })}
           </tbody>
         </table>
-         {daySchedule.length === 0 && therapistsToDisplay.length > 0 && (
+         {daySchedule.length === 0 && staffToDisplay.length > 0 && (
              <p className="text-slate-500 italic text-center py-4">No sessions match the current filters for {formattedDate}, or no sessions are scheduled. Click on a cell to add manually.</p>
          )}
       </div>

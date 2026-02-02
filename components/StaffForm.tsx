@@ -1,14 +1,14 @@
 
 import React, { useState } from 'react';
-import { Therapist, TherapistFormProps, AlliedHealthServiceType, TherapistRole } from '../types';
-import { ALL_ALLIED_HEALTH_SERVICES, ALL_THERAPIST_ROLES } from '../constants';
+import { Staff, StaffFormProps, AlliedHealthServiceType, StaffRole } from '../types';
+import { ALL_ALLIED_HEALTH_SERVICES, ALL_STAFF_ROLES } from '../constants';
 import { TrashIcon } from './icons/TrashIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
 
-const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
-  const [formData, setFormData] = useState<Therapist>(therapist);
+const StaffForm: React.FC<StaffFormProps> = ({ staff, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
+  const [formData, setFormData] = useState<Staff>(staff);
 
-  const handleInputChange = (field: keyof Therapist, value: any) => {
+  const handleInputChange = (field: keyof Staff, value: any) => {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
     onUpdate(newFormData);
@@ -33,12 +33,12 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
             className="text-xl font-semibold text-slate-700 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full mr-4"
-            placeholder="Therapist Name"
+            placeholder="Staff Name"
         />
         <button
-          onClick={() => onRemove(therapist.id)}
+          onClick={() => onRemove(staff.id)}
           className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0"
-          aria-label="Remove Therapist"
+          aria-label="Remove Staff"
         >
           <TrashIcon className="w-6 h-6" />
         </button>
@@ -46,22 +46,22 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label htmlFor={`role-${therapist.id}`} className="block text-sm font-medium text-slate-600 mb-1">Role:</label>
+          <label htmlFor={`role-${staff.id}`} className="block text-sm font-medium text-slate-600 mb-1">Role:</label>
           <select
-            id={`role-${therapist.id}`}
+            id={`role-${staff.id}`}
             value={formData.role || 'BT'}
-            onChange={(e) => handleInputChange('role', e.target.value as TherapistRole)}
+            onChange={(e) => handleInputChange('role', e.target.value as StaffRole)}
             className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
-            {ALL_THERAPIST_ROLES.map(role => (
+            {ALL_STAFF_ROLES.map(role => (
               <option key={role} value={role}>{role}</option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor={`teamId-${therapist.id}`} className="block text-sm font-medium text-slate-600 mb-1">Team:</label>
+          <label htmlFor={`teamId-${staff.id}`} className="block text-sm font-medium text-slate-600 mb-1">Team:</label>
           <select
-            id={`teamId-${therapist.id}`}
+            id={`teamId-${staff.id}`}
             value={formData.teamId || ''}
             onChange={(e) => handleInputChange('teamId', e.target.value)}
             className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
@@ -78,7 +78,7 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
       
       <div>
         <SearchableMultiSelectDropdown
-            id={`therapist-qualifications-${therapist.id}`}
+            id={`staff-qualifications-${staff.id}`}
             label="Qualifications/Roles"
             options={availableInsuranceQualifications.map(q => q.id)}
             selectedOptions={formData.qualifications}
@@ -109,10 +109,10 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
       </div>
 
       <p className="text-sm text-slate-500 mt-4">
-        Therapists are assumed to be available 8:45 AM - 5:15 PM, Monday to Friday. Maximum weekly hours are not currently enforced by the system. Only mandatory 30-minute lunch breaks will be scheduled as 'IndirectTime'.
+        Staff are assumed to be available 8:45 AM - 5:15 PM, Monday to Friday. Maximum weekly hours are not currently enforced by the system. Only mandatory 30-minute lunch breaks will be scheduled as 'IndirectTime'.
       </p>
     </div>
   );
 };
 
-export default TherapistForm;
+export default StaffForm;

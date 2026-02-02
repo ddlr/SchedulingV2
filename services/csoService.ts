@@ -1,5 +1,5 @@
-import { Client, Therapist, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, TherapistRole } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants';
+import { Client, Staff, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, StaffRole } from '../types';
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_STAFF_ROLES, DEFAULT_ROLE_RANK } from '../constants';
 import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from '../utils/validationService';
 
 const SLOT_SIZE = 15;
@@ -39,16 +39,16 @@ class BitTracker {
 
 export class FastScheduler {
     private clients: Client[];
-    private therapists: Therapist[];
+    private staff: Staff[];
     private insuranceQualifications: InsuranceQualification[];
     private day: DayOfWeek;
     private selectedDate: Date;
     private callouts: Callout[];
     private otherDayEntries: GeneratedSchedule;
 
-    constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
+    constructor(clients: Client[], staff: Staff[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
         this.clients = clients;
-        this.therapists = therapists;
+        this.staff = staff;
         this.insuranceQualifications = insuranceQualifications;
         this.day = day;
         this.selectedDate = selectedDate;
@@ -64,15 +64,15 @@ export class FastScheduler {
         return DEFAULT_ROLE_RANK[role] ?? -1;
     }
 
-    private meetsInsurance(t: Therapist, c: Client): boolean {
+    private meetsInsurance(t: Staff, c: Client): boolean {
         if (c.insuranceRequirements.length === 0) return true;
         return c.insuranceRequirements.every(reqId => {
             if (t.qualifications.includes(reqId)) return true;
 
             const requiredRank = this.getRoleRank(reqId);
-            const therapistRank = this.getRoleRank(t.role);
+            const staffRank = this.getRoleRank(t.role);
 
-            if (therapistRank >= requiredRank && requiredRank !== -1) return true;
+            if (staffRank >= requiredRank && requiredRank !== -1) return true;
             if (t.role === reqId) return true;
             return false;
         });
@@ -82,8 +82,8 @@ export class FastScheduler {
         let max = Infinity;
         c.insuranceRequirements.forEach(reqId => {
             const q = this.insuranceQualifications.find(qual => qual.id === reqId);
-            if (q && q.maxTherapistsPerDay !== undefined && q.maxTherapistsPerDay < max) {
-                max = q.maxTherapistsPerDay;
+            if (q && q.maxStaffPerDay !== undefined && q.maxStaffPerDay < max) {
+                max = q.maxStaffPerDay;
             }
         });
         return max;
@@ -134,11 +134,11 @@ export class FastScheduler {
 
     public createSchedule(initialSchedule?: GeneratedSchedule): GeneratedSchedule {
         const schedule: GeneratedSchedule = [];
-        const tracker = new BitTracker(this.therapists.length, this.clients.length);
+        const tracker = new BitTracker(this.staff.length, this.clients.length);
         const lunchCount = new Array(NUM_SLOTS).fill(0);
         // Allow enough concurrent lunches to ensure remaining staff can cover all clients
-        const maxConcurrentLunches = Math.max(1, this.therapists.length - this.clients.length);
-        const tSessionCount = new Array(this.therapists.length).fill(0);
+        const maxConcurrentLunches = Math.max(1, this.staff.length - this.clients.length);
+        const tSessionCount = new Array(this.staff.length).fill(0);
         const clientMinutes = new Map<number, number>();
         this.clients.forEach((c, ci) => {
             const otherDayMins = this.otherDayEntries
@@ -151,8 +151,8 @@ export class FastScheduler {
             if (isDateAffectedByCalloutRange(this.selectedDate, co.startDate, co.endDate)) {
                 const s = Math.max(0, Math.floor((timeToMinutes(co.startTime) - OP_START) / SLOT_SIZE));
                 const e = Math.min(NUM_SLOTS, Math.ceil((timeToMinutes(co.endTime) - OP_START) / SLOT_SIZE));
-                if (co.entityType === 'therapist') {
-                    const idx = this.therapists.findIndex(t => t.id === co.entityId);
+                if (co.entityType === 'staff') {
+                    const idx = this.staff.findIndex(t => t.id === co.entityId);
                     if (idx >= 0) tracker.tBusy[idx] |= ((1n << BigInt(e - s)) - 1n) << BigInt(s);
                 } else {
                     const idx = this.clients.findIndex(c => c.id === co.entityId);
@@ -164,21 +164,21 @@ export class FastScheduler {
         if (initialSchedule) {
             initialSchedule.forEach(entry => {
                 if (entry.day !== this.day) return;
-                const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
+                const ti = this.staff.findIndex(t => t.id === entry.staffId);
                 const ci = this.clients.findIndex(c => c.id === entry.clientId);
                 const s = Math.max(0, Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE));
                 const l = Math.ceil((timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)) / SLOT_SIZE);
 
                 if (ti >= 0 && (ci >= 0 || entry.clientId === null) && tracker.isTFree(ti, s, l) && (ci < 0 || tracker.isCFree(ci, s, l))) {
                     if (ci >= 0) {
-                        if (!this.meetsInsurance(this.therapists[ti], this.clients[ci])) return;
+                        if (!this.meetsInsurance(this.staff[ti], this.clients[ci])) return;
 
                         // Enforce Max Duration even for initial sessions (allows fixing invalid sessions)
                         const durationMinutes = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
                         if (durationMinutes > this.getMaxDuration(this.clients[ci])) return;
 
                         // Enforce BTB rule for initial sessions
-                        if (this.isBTB(schedule, entry.clientId!, entry.therapistId, s, l)) return;
+                        if (this.isBTB(schedule, entry.clientId!, entry.staffId, s, l)) return;
                     }
 
                     schedule.push({ ...entry, id: generateId() });
@@ -191,16 +191,16 @@ export class FastScheduler {
             });
         }
 
-        // Optimization: Pre-sort therapists by role once
-        const sortedTherapists = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) => {
+        // Optimization: Pre-sort staff by role once
+        const sortedStaff = this.staff.map((t, ti) => ({t, ti})).sort((a, b) => {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
         // Pass 1: Lunches
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
+        const shuffledT = this.staff.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
         shuffledT.forEach(q => {
             // Check if already has a lunch or indirect task in the lunch window from initialSchedule
-            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            if (schedule.some(e => e.staffId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
@@ -238,7 +238,7 @@ export class FastScheduler {
                 slots.sort((a, b) => (Math.min(a, NUM_SLOTS - (a + len)) - Math.min(b, NUM_SLOTS - (b + len))) + (Math.random() - 0.5) * 4);
                 for (const s of slots) {
                     if (tracker.isCFree(target.ci, s, len)) {
-                        const possibleT = this.therapists.map((t, ti) => ({t, ti}))
+                        const possibleT = this.staff.map((t, ti) => ({t, ti}))
                             .filter(x => {
                                 if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
                                 const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
@@ -268,8 +268,8 @@ export class FastScheduler {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
-                    // Find a therapist for this client starting at slot s
-                    const quals = sortedTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    // Find a staff for this client starting at slot s
+                    const quals = sortedStaff.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
@@ -330,7 +330,7 @@ export class FastScheduler {
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
             return schedule.some(s =>
-                s.therapistId === e.therapistId &&
+                s.staffId === e.staffId &&
                 (s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_'))
             );
         });
@@ -339,13 +339,13 @@ export class FastScheduler {
     private isBTB(s: GeneratedSchedule, cid: string, tid: string, startSlot: number, len: number) {
         const startMin = OP_START + startSlot * SLOT_SIZE;
         const endMin = OP_START + (startSlot + len) * SLOT_SIZE;
-        return s.some(x => x.clientId === cid && x.therapistId === tid && (timeToMinutes(x.endTime) === startMin || timeToMinutes(x.startTime) === endMin));
+        return s.some(x => x.clientId === cid && x.staffId === tid && (timeToMinutes(x.endTime) === startMin || timeToMinutes(x.startTime) === endMin));
     }
 
     private ent(ci: number, ti: number, s: number, l: number, type: SessionType): ScheduleEntry {
         const client = ci >= 0 ? this.clients[ci] : null;
-        const therapist = this.therapists[ti];
-        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: therapist.id, therapistName: therapist.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
+        const staff = this.staff[ti];
+        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, staffId: staff.id, staffName: staff.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
     }
 
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
@@ -369,12 +369,12 @@ export class FastScheduler {
     private calculateScore(s: GeneratedSchedule, initialSchedule?: GeneratedSchedule): number {
         const otherDayEntries = initialSchedule ? initialSchedule.filter(e => e.day !== this.day) : [];
         const fullSchedule = [...otherDayEntries, ...s];
-        const errs = validateFullSchedule(fullSchedule, this.clients, this.therapists, this.insuranceQualifications, this.selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, this.callouts);
+        const errs = validateFullSchedule(fullSchedule, this.clients, this.staff, this.insuranceQualifications, this.selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, this.callouts);
         if (errs.length > 0) {
             let p = 10000000; // Higher base penalty for any error
             errs.forEach(e => {
                 if (e.ruleId === "CLIENT_COVERAGE_GAP_AT_TIME") p += 100000; // Extremely high penalty for gaps
-                else if (e.ruleId === "THERAPIST_TIME_CONFLICT" || e.ruleId === "CLIENT_TIME_CONFLICT") p += 200000;
+                else if (e.ruleId === "STAFF_TIME_CONFLICT" || e.ruleId === "CLIENT_TIME_CONFLICT") p += 200000;
                 else if (e.ruleId === "MAX_PROVIDERS_VIOLATED") p += 500000;
                 else if (e.ruleId === "MAX_WEEKLY_HOURS_VIOLATED") p += 500000;
                 else if (e.ruleId === "MIN_DURATION_VIOLATED" || e.ruleId === "ABA_DURATION_TOO_SHORT") p += 2000000;
@@ -391,15 +391,15 @@ export class FastScheduler {
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
                 const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                billableTimes.set(e.therapistId, (billableTimes.get(e.therapistId) || 0) + dur);
+                billableTimes.set(e.staffId, (billableTimes.get(e.staffId) || 0) + dur);
             }
         });
 
-        const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
+        const data = this.staff.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
-                // If therapist i is higher rank (BCBA) than therapist j (BT)
-                // but therapist i has MORE billable time than j, penalize.
+                // If staff i is higher rank (BCBA) than staff j (BT)
+                // but staff i has MORE billable time than j, penalize.
                 // We want to preserve 'blank' time for senior staff.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
                     penalty += (data[i].billable - data[j].billable) * 100;
@@ -412,15 +412,15 @@ export class FastScheduler {
 
 export async function runCsoAlgorithm(
     clients: Client[],
-    therapists: Therapist[],
+    staff: Staff[],
     insuranceQualifications: InsuranceQualification[],
     selectedDate: Date,
     callouts: Callout[],
     initialScheduleForOptimization?: GeneratedSchedule
 ): Promise<GAGenerationResult> {
     const day = getDayOfWeekFromDate(selectedDate);
-    const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
+    const algo = new FastScheduler(clients, staff, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
     const schedule = await algo.run(initialScheduleForOptimization);
-    const errors = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
+    const errors = validateFullSchedule(schedule, clients, staff, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
     return { schedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
 }

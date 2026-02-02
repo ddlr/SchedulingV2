@@ -1,4 +1,4 @@
-import { DayOfWeek, TherapistRole, AlliedHealthServiceType } from './types';
+import { DayOfWeek, StaffRole, AlliedHealthServiceType } from './types';
 import { getSystemConfig } from './services/systemConfigService';
 
 let _cachedConfig = getSystemConfig();
@@ -24,7 +24,7 @@ export const getLunchCoverageEndTime = () => _cachedConfig.lunchCoverageEndTime;
 export const getIdealLunchWindowStart = () => _cachedConfig.idealLunchWindowStart;
 export const getIdealLunchWindowEndForStart = () => _cachedConfig.idealLunchWindowEndForStart;
 export const getTeamColors = () => _cachedConfig.teamColors;
-export const getAllTherapistRoles = () => _cachedConfig.allTherapistRoles;
+export const getAllStaffRoles = () => _cachedConfig.allStaffRoles;
 export const getDefaultRoleRank = () => _cachedConfig.defaultRoleRank;
 export const getAllAlliedHealthServices = () => _cachedConfig.allAlliedHealthServices;
 export const getAllSessionTypes = () => _cachedConfig.allSessionTypes;
@@ -39,7 +39,7 @@ export const LUNCH_COVERAGE_END_TIME = getLunchCoverageEndTime();
 export const IDEAL_LUNCH_WINDOW_START = getIdealLunchWindowStart();
 export const IDEAL_LUNCH_WINDOW_END_FOR_START = getIdealLunchWindowEndForStart();
 export const TEAM_COLORS = getTeamColors();
-export const ALL_THERAPIST_ROLES = getAllTherapistRoles();
+export const ALL_STAFF_ROLES = getAllStaffRoles();
 export const DEFAULT_ROLE_RANK = getDefaultRoleRank();
 export const ALL_ALLIED_HEALTH_SERVICES = getAllAlliedHealthServices();
 export const ALL_SESSION_TYPES = getAllSessionTypes();

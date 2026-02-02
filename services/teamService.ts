@@ -73,7 +73,9 @@ export const updateTeams = async (updatedTeams: Team[]): Promise<Team[]> => {
           .insert({
             id: team.id,
             name: team.name,
-            color: team.color
+            color: team.color,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           });
       }
     }

@@ -10,11 +10,11 @@ import SystemConfigPanel from './SystemConfigPanel';
 const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   availableTeams,
   onBulkUpdateClients,
-  onBulkUpdateTherapists,
+  onBulkUpdateStaff,
   onUpdateInsuranceQualifications,
 }) => {
   const [clientFile, setClientFile] = useState<File | null>(null);
-  const [therapistFile, setTherapistFile] = useState<File | null>(null);
+  const [staffFile, setStaffFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [operationSummary, setOperationSummary] = useState<BulkOperationSummary | null>(null);
   const [activeAccordion, setActiveAccordion] = useState<string | null>(null);
@@ -23,17 +23,17 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
     setActiveAccordion(activeAccordion === id ? null : id);
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'client' | 'therapist') => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'client' | 'staff') => {
     setOperationSummary(null);
     const file = event.target.files?.[0];
     if (file) {
       if (type === 'client') setClientFile(file);
-      else setTherapistFile(file);
+      else setStaffFile(file);
     }
   };
 
-  const processBulkUpdate = async (type: 'client' | 'therapist', action: 'ADD_UPDATE' | 'REMOVE') => {
-    const file = type === 'client' ? clientFile : therapistFile;
+  const processBulkUpdate = async (type: 'client' | 'staff', action: 'ADD_UPDATE' | 'REMOVE') => {
+    const file = type === 'client' ? clientFile : staffFile;
     if (!file) {
       alert(`Please select a ${type} CSV file.`);
       return;
@@ -46,14 +46,14 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
     if (type === 'client') {
       summary = await onBulkUpdateClients(file, action);
     } else {
-      summary = await onBulkUpdateTherapists(file, action);
+      summary = await onBulkUpdateStaff(file, action);
     }
     
     setOperationSummary(summary);
     setIsLoading(false);
     // Clear file input after processing
     if (type === 'client') setClientFile(null);
-    else setTherapistFile(null);
+    else setStaffFile(null);
     const fileInput = document.getElementById(`${type}-file-input`) as HTMLInputElement;
     if (fileInput) fileInput.value = '';
   };
@@ -71,18 +71,18 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
     <p class="text-xs">For <code>REMOVE</code>, client with matching 'name' is removed.</p>
   `;
 
-  const therapistCSVFormatDoc = `
-    <p class="mb-2"><strong>Required Columns for Therapist CSV:</strong></p>
+  const staffCSVFormatDoc = `
+    <p class="mb-2"><strong>Required Columns for Staff CSV:</strong></p>
     <ul class="list-disc list-inside space-y-1 text-sm">
       <li><strong>ACTION:</strong> (Required) Must be <code>ADD_UPDATE</code> or <code>REMOVE</code>.</li>
-      <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Therapist's full name. Must be unique for reliable <code>REMOVE</code>.</li>
+      <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Staff's full name. Must be unique for reliable <code>REMOVE</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Assignment logic similar to clients.</li>
       <li><strong>qualifications:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "RBT;CPR Certified"). New qualifications added to Settings.</li>
       <li><strong>canCoverIndirect:</strong> (Optional for <code>ADD_UPDATE</code>) <code>TRUE</code> or <code>FALSE</code>.</li>
       <li><strong>canProvideAlliedHealth:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list of allied health service types (e.g., "OT;SLP").</li>
     </ul>
-    <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a therapist with 'name' exists, they are updated. Otherwise, a new one is created.</p>
-    <p class="text-xs">For <code>REMOVE</code>, therapist with matching 'name' is removed.</p>
+    <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a staff with 'name' exists, they are updated. Otherwise, a new one is created.</p>
+    <p class="text-xs">For <code>REMOVE</code>, staff with matching 'name' is removed.</p>
   `;
 
   const renderDocumentation = (title: string, content: string, id: string) => (
@@ -177,36 +177,36 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
         </div>
       </section>
 
-      {/* Therapist Bulk Operations */}
+      {/* Staff Bulk Operations */}
       <section className="space-y-4 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <h3 className="text-xl font-semibold text-slate-600">Therapist Data</h3>
-        {renderDocumentation("Therapist CSV File Format Guide", therapistCSVFormatDoc, "therapistDoc")}
+        <h3 className="text-xl font-semibold text-slate-600">Staff Data</h3>
+        {renderDocumentation("Staff CSV File Format Guide", staffCSVFormatDoc, "staffDoc")}
         <div className="mt-3">
-          <label htmlFor="therapist-file-input" className="block text-sm font-medium text-slate-700 mb-1">Upload Therapist CSV File:</label>
+          <label htmlFor="staff-file-input" className="block text-sm font-medium text-slate-700 mb-1">Upload Staff CSV File:</label>
           <input
             type="file"
-            id="therapist-file-input"
+            id="staff-file-input"
             accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-            onChange={(e) => handleFileChange(e, 'therapist')}
+            onChange={(e) => handleFileChange(e, 'staff')}
             className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
         </div>
         <div className="flex flex-wrap gap-3 mt-3">
           <button
-            onClick={() => processBulkUpdate('therapist', 'ADD_UPDATE')}
-            disabled={!therapistFile || isLoading}
+            onClick={() => processBulkUpdate('staff', 'ADD_UPDATE')}
+            disabled={!staffFile || isLoading}
             className="bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
           >
             <DocumentArrowUpIcon className="w-5 h-5" />
-            <span>Add/Update Therapists from CSV</span>
+            <span>Add/Update Staff from CSV</span>
           </button>
           <button
-            onClick={() => processBulkUpdate('therapist', 'REMOVE')}
-            disabled={!therapistFile || isLoading}
+            onClick={() => processBulkUpdate('staff', 'REMOVE')}
+            disabled={!staffFile || isLoading}
             className="bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
           >
              <TrashIcon className="w-5 h-5" />
-            <span>Remove Therapists from CSV</span>
+            <span>Remove Staff from CSV</span>
           </button>
         </div>
       </section>

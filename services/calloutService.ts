@@ -21,7 +21,7 @@ const loadCallouts = async () => {
 
     _callouts = (data || []).map(row => ({
       id: row.id,
-      entityType: row.entity_type as 'client' | 'therapist',
+      entityType: row.entity_type as 'client' | 'staff',
       entityId: row.entity_id,
       entityName: row.entity_name,
       startDate: row.start_date,

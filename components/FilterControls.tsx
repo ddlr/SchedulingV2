@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Team, Therapist, Client, FilterControlsProps } from '../types';
+import { Team, Staff, Client, FilterControlsProps } from '../types';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { XMarkIcon } from './icons/XMarkIcon';
 
@@ -123,13 +123,13 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
 
 const FilterControls: React.FC<FilterControlsProps> = ({
   allTeams,
-  allTherapists,
+  allStaff,
   allClients,
   selectedTeamIds,
-  selectedTherapistIds,
+  selectedStaffIds,
   selectedClientIds,
   onTeamFilterChange,
-  onTherapistFilterChange,
+  onStaffFilterChange,
   onClientFilterChange,
   onClearFilters,
 }) => {
@@ -144,12 +144,12 @@ const FilterControls: React.FC<FilterControlsProps> = ({
         placeholder="Filter by Team(s)"
       />
       <DropdownFilter
-        id="therapist-filter"
-        label="Therapists"
-        items={allTherapists.map(t => ({ id: t.id, name: t.name }))}
-        selectedIds={selectedTherapistIds}
-        onSelectionChange={onTherapistFilterChange}
-        placeholder="Filter by Therapist(s)"
+        id="staff-filter"
+        label="Staff"
+        items={allStaff.map(t => ({ id: t.id, name: t.name }))}
+        selectedIds={selectedStaffIds}
+        onSelectionChange={onStaffFilterChange}
+        placeholder="Filter by Staff(s)"
       />
       <DropdownFilter
         id="client-filter"

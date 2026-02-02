@@ -97,7 +97,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
       <p className="text-sm text-slate-500">
         Clients are assumed to require coverage Monday-Friday, 9 AM - 5 PM. 
         Allied Health needs will be scheduled additionally.
-        The primary therapist is considered the BCBA on the client's assigned team.
+        The primary staff is considered the BCBA on the client's assigned team.
       </p>
       
       <div>

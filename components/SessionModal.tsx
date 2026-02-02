@@ -16,7 +16,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
   sessionData,
   newSessionSlot,
   clients,
-  therapists,
+  staff,
   insuranceQualifications,
   availableSessionTypes,
   timeSlots: allTimeSlots,
@@ -28,8 +28,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
     id: ensureScheduleEntryId(),
     clientName: null,
     clientId: null,
-    therapistName: '',
-    therapistId: '',
+    staffName: '',
+    staffId: '',
     day: DayOfWeek.MONDAY,
     startTime: '',
     endTime: '',
@@ -112,12 +112,12 @@ const SessionModal: React.FC<SessionModalProps> = ({
         setFormData({...sessionData, id: ensureScheduleEntryId(sessionData.id)});
       } else if (newSessionSlot) {
         const defaultSessionType: SessionType = 'ABA';
-        const therapist = therapists.find(t => t.id === newSessionSlot.therapistId);
+        const foundStaff = staff.find(t => t.id === newSessionSlot.staffId);
         setFormData({
           ...initialFormState,
           id: ensureScheduleEntryId(),
-          therapistId: newSessionSlot.therapistId,
-          therapistName: therapist ? therapist.name : newSessionSlot.therapistName,
+          staffId: newSessionSlot.staffId,
+          staffName: foundStaff ? foundStaff.name : newSessionSlot.staffName,
           day: newSessionSlot.day,
           startTime: newSessionSlot.startTime,
           sessionType: defaultSessionType,
@@ -129,7 +129,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
         setFormData({...initialFormState, id: ensureScheduleEntryId()});
       }
     }
-  }, [isOpen, sessionData, newSessionSlot, clients, therapists]);
+  }, [isOpen, sessionData, newSessionSlot, clients, staff]);
 
   const handleInputChange = (field: keyof ScheduleEntry, value: string | null | SessionType | DayOfWeek | string[]) => {
     setFormError(null);
@@ -137,9 +137,9 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     let newFormData = { ...formData, [field]: value };
 
-    if (field === 'therapistId') {
-        const therapist = therapists.find(t => t.id === value);
-        newFormData.therapistName = therapist ? therapist.name : '';
+    if (field === 'staffId') {
+        const foundStaff = staff.find(t => t.id === value);
+        newFormData.staffName = foundStaff ? foundStaff.name : '';
     }
 
     if (field === 'clientId') {
@@ -176,8 +176,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     const localErrors: ValidationError[] = [];
 
-    if (!formData.therapistId) {
-      localErrors.push({ ruleId: "MISSING_THERAPIST", message: "Therapist must be selected."});
+    if (!formData.staffId) {
+      localErrors.push({ ruleId: "MISSING_STAFF", message: "Staff must be selected."});
     }
     if (formData.sessionType !== 'IndirectTime' && !formData.clientId) {
       localErrors.push({ ruleId: "MISSING_CLIENT", message: "Client must be selected for non-indirect sessions."});
@@ -220,7 +220,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
   const handleDeleteClick = () => {
     if (onDelete && sessionData) {
-      if (window.confirm(`Are you sure you want to delete this session for ${sessionData.clientName || 'Indirect Task'} with ${sessionData.therapistName}?`)) {
+      if (window.confirm(`Are you sure you want to delete this session for ${sessionData.clientName || 'Indirect Task'} with ${sessionData.staffName}?`)) {
         onDelete(sessionData);
       }
     }
@@ -269,16 +269,16 @@ const SessionModal: React.FC<SessionModalProps> = ({
           </div>
 
           <div>
-            <label htmlFor="sessionTherapist" className="block text-sm font-medium text-slate-600">Therapist</label>
+            <label htmlFor="sessionStaff" className="block text-sm font-medium text-slate-600">Staff</label>
             <select
-              id="sessionTherapist"
-              value={formData.therapistId}
-              onChange={(e) => handleInputChange('therapistId', e.target.value)}
+              id="sessionStaff"
+              value={formData.staffId}
+              onChange={(e) => handleInputChange('staffId', e.target.value)}
               className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
               required
             >
-              <option value="">Select Therapist</option>
-              {therapists.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">Select Staff</option>
+              {staff.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
