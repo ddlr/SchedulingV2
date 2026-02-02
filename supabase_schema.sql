@@ -218,3 +218,29 @@ VALUES
   ('OT Certified', NULL),
   ('SLP Certified', NULL)
 ON CONFLICT (id) DO NOTHING;
+
+-- Initial Sample Teams
+INSERT INTO teams (id, name, color)
+VALUES
+  ('team-1', 'Red Team', '#EF4444'),
+  ('team-2', 'Blue Team', '#3B82F6'),
+  ('team-3', 'Green Team', '#10B981')
+ON CONFLICT (id) DO NOTHING;
+
+-- Initial Sample Staff
+INSERT INTO staff (id, name, role, team_id, qualifications)
+VALUES
+  ('t1', 'Breanne Hawkins', 'RBT', 'team-2', '{"RBT","BLS","TRICARE","MD_MEDICAID"}'),
+  ('t2', 'Ramsey Mahaffey', 'RBT', 'team-3', '{"RBT","BLS","TRICARE","MD_MEDICAID"}'),
+  ('t3', 'Britney Little', 'BCBA', 'team-2', '{"BCBA","BLS","TRICARE","MD_MEDICAID"}'),
+  ('t4', 'Amanda Lewis', 'BCBA', 'team-1', '{"BCBA","BLS","TRICARE","MD_MEDICAID"}')
+ON CONFLICT (id) DO NOTHING;
+
+-- Initial Sample Clients
+INSERT INTO clients (id, name, team_id, insurance_requirements)
+VALUES
+  ('c1', 'JaxBri', 'team-2', '{"MD_MEDICAID"}'),
+  ('c2', 'MarSul', 'team-2', '{}'),
+  ('c3', 'AbeAbe', 'team-3', '{}'),
+  ('c7', 'NolGun', 'team-2', '{"RBT","BLS"}')
+ON CONFLICT (id) DO NOTHING;

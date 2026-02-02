@@ -6,9 +6,14 @@ const generateScheduleEntryId = () => `schedEntry-${Date.now()}-${Math.random().
 let _baseSchedules: BaseScheduleConfig[] = [];
 const listeners: Array<(schedules: BaseScheduleConfig[]) => void> = [];
 
-const ensureEntryIds = (schedule: GeneratedSchedule | null): GeneratedSchedule | null => {
+const ensureEntryIds = (schedule: any[] | null): GeneratedSchedule | null => {
   if (!schedule) return null;
-  return schedule.map(entry => ({ ...entry, id: entry.id || generateScheduleEntryId() }));
+  return schedule.map(entry => ({
+    ...entry,
+    id: entry.id || generateScheduleEntryId(),
+    staffId: entry.staffId || entry.therapistId,
+    staffName: entry.staffName || entry.therapistName
+  }));
 };
 
 const notifyListeners = () => {
