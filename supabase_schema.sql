@@ -1,21 +1,21 @@
 -- SQL Migration for ABA Scheduler
--- This script sets up the tables for clients, staff (formerly therapists), teams, insurance qualifications, callouts, and system configuration.
+-- This script sets up the tables for clients, staff, teams, insurance qualifications, callouts, and system configuration.
 
 -- 1. Teams Table
 CREATE TABLE IF NOT EXISTS teams (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id text PRIMARY KEY, -- Using text to allow custom IDs if needed, otherwise UUIDs as strings
   name text NOT NULL,
   color text NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- 2. Staff Table (formerly therapists)
+-- 2. Staff Table
 CREATE TABLE IF NOT EXISTS staff (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id text PRIMARY KEY,
   name text NOT NULL,
   role text NOT NULL,
-  team_id uuid REFERENCES teams(id) ON DELETE SET NULL,
+  team_id text REFERENCES teams(id) ON DELETE SET NULL,
   qualifications text[] DEFAULT '{}',
   can_provide_allied_health text[] DEFAULT '{}',
   created_at timestamptz DEFAULT now(),
@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS staff (
 
 -- 3. Clients Table
 CREATE TABLE IF NOT EXISTS clients (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id text PRIMARY KEY,
   name text NOT NULL,
-  team_id uuid REFERENCES teams(id) ON DELETE SET NULL,
+  team_id text REFERENCES teams(id) ON DELETE SET NULL,
   color text,
   insurance_requirements text[] DEFAULT '{}',
   allied_health_needs jsonb DEFAULT '[]',
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 -- 4. Insurance Qualifications Table
 CREATE TABLE IF NOT EXISTS insurance_qualifications (
-  id text PRIMARY KEY, -- Using the name/identifier as PK as per current logic
+  id text PRIMARY KEY,
   max_staff_per_day integer,
   min_session_duration_minutes integer,
   max_session_duration_minutes integer,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS insurance_qualifications (
 CREATE TABLE IF NOT EXISTS callouts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   entity_type text NOT NULL CHECK (entity_type IN ('client', 'staff')),
-  entity_id uuid NOT NULL,
+  entity_id text NOT NULL,
   entity_name text NOT NULL,
   start_date date NOT NULL,
   end_date date NOT NULL,
@@ -69,45 +69,6 @@ CREATE TABLE IF NOT EXISTS system_config (
   updated_at timestamptz DEFAULT now()
 );
 
--- Enable Row Level Security (RLS)
-ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE insurance_qualifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE callouts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
-
--- Create Policies (Allowing public access for now as per previous mock behavior, but can be restricted)
-CREATE POLICY "Allow public read access to teams" ON teams FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to teams" ON teams FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to teams" ON teams FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to teams" ON teams FOR DELETE TO public USING (true);
-
-CREATE POLICY "Allow public read access to staff" ON staff FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to staff" ON staff FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to staff" ON staff FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to staff" ON staff FOR DELETE TO public USING (true);
-
-CREATE POLICY "Allow public read access to clients" ON clients FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to clients" ON clients FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to clients" ON clients FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to clients" ON clients FOR DELETE TO public USING (true);
-
-CREATE POLICY "Allow public read access to insurance_qualifications" ON insurance_qualifications FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to insurance_qualifications" ON insurance_qualifications FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to insurance_qualifications" ON insurance_qualifications FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to insurance_qualifications" ON insurance_qualifications FOR DELETE TO public USING (true);
-
-CREATE POLICY "Allow public read access to callouts" ON callouts FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to callouts" ON callouts FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to callouts" ON callouts FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to callouts" ON callouts FOR DELETE TO public USING (true);
-
-CREATE POLICY "Allow public read access to system_config" ON system_config FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to system_config" ON system_config FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to system_config" ON system_config FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to system_config" ON system_config FOR DELETE TO public USING (true);
-
 -- 7. Base Schedules Table
 CREATE TABLE IF NOT EXISTS base_schedules (
   id text PRIMARY KEY,
@@ -117,11 +78,6 @@ CREATE TABLE IF NOT EXISTS base_schedules (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-ALTER TABLE base_schedules ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to base_schedules" ON base_schedules FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to base_schedules" ON base_schedules FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to base_schedules" ON base_schedules FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to base_schedules" ON base_schedules FOR DELETE TO public USING (true);
 
 -- 8. Schedule Feedback Table
 CREATE TABLE IF NOT EXISTS schedule_feedback (
@@ -131,14 +87,9 @@ CREATE TABLE IF NOT EXISTS schedule_feedback (
   violations_count integer,
   violations_detail jsonb,
   feedback_text text,
-  team_id uuid REFERENCES teams(id) ON DELETE SET NULL,
+  team_id text REFERENCES teams(id) ON DELETE SET NULL,
   created_at timestamptz DEFAULT now()
 );
-ALTER TABLE schedule_feedback ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to schedule_feedback" ON schedule_feedback FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to schedule_feedback" ON schedule_feedback FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to schedule_feedback" ON schedule_feedback FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to schedule_feedback" ON schedule_feedback FOR DELETE TO public USING (true);
 
 -- 9. Schedule Patterns Table
 CREATE TABLE IF NOT EXISTS schedule_patterns (
@@ -150,11 +101,6 @@ CREATE TABLE IF NOT EXISTS schedule_patterns (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
-ALTER TABLE schedule_patterns ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to schedule_patterns" ON schedule_patterns FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to schedule_patterns" ON schedule_patterns FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to schedule_patterns" ON schedule_patterns FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to schedule_patterns" ON schedule_patterns FOR DELETE TO public USING (true);
 
 -- 10. Constraint Violations Log Table
 CREATE TABLE IF NOT EXISTS constraint_violations_log (
@@ -165,11 +111,32 @@ CREATE TABLE IF NOT EXISTS constraint_violations_log (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insurance_qualifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE callouts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE base_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE constraint_violations_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to constraint_violations_log" ON constraint_violations_log FOR SELECT TO public USING (true);
-CREATE POLICY "Allow public insert access to constraint_violations_log" ON constraint_violations_log FOR INSERT TO public WITH CHECK (true);
-CREATE POLICY "Allow public update access to constraint_violations_log" ON constraint_violations_log FOR UPDATE TO public USING (true);
-CREATE POLICY "Allow public delete access to constraint_violations_log" ON constraint_violations_log FOR DELETE TO public USING (true);
+
+-- Create Policies (Public access for simplicity during migration)
+DO $$
+DECLARE
+    t text;
+BEGIN
+    FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
+    LOOP
+        EXECUTE format('CREATE POLICY "Allow public select on %I" ON %I FOR SELECT TO public USING (true)', t, t);
+        EXECUTE format('CREATE POLICY "Allow public insert on %I" ON %I FOR INSERT TO public WITH CHECK (true)', t, t);
+        EXECUTE format('CREATE POLICY "Allow public update on %I" ON %I FOR UPDATE TO public USING (true)', t, t);
+        EXECUTE format('CREATE POLICY "Allow public delete on %I" ON %I FOR DELETE TO public USING (true)', t, t);
+    END LOOP;
+END $$;
 
 -- Insert Default System Config
 INSERT INTO system_config (id, config_data)
@@ -208,7 +175,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Insert Initial Insurance Qualifications
+-- Initial Sample Insurance Qualifications
 INSERT INTO insurance_qualifications (id, max_staff_per_day)
 VALUES
   ('RBT', NULL),
