@@ -179,7 +179,7 @@ export const validateSessionEntry = (
               if (qual.maxSessionDurationMinutes && duration > qual.maxSessionDurationMinutes) {
                 errors.push({
                     ruleId: "MAX_DURATION_VIOLATED",
-                    message: `Session for ${clientName} is ${duration} mins, but ${reqId} permits a maximum of ${qual.maxSessionDurationMinutes} mins.`,
+                    message: `Session for ${clientName} is ${duration} mins, but ${reqId} allows at most ${qual.maxSessionDurationMinutes} mins.`,
                     details: { entryId: entryToValidate.id }
                 });
               }

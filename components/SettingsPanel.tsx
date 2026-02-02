@@ -208,8 +208,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <td className="px-4 py-3 whitespace-nowrap">
                       <input
                         type="number"
-                        value={iq.maxSessionDurationMinutes ?? ''}
-                        onChange={(e) => handleUpdateIQField(iq.id, 'maxSessionDurationMinutes', e.target.value)}
+                        value={iq.minSessionDurationMinutes ?? ''}
+                        onChange={(e) => handleUpdateIQField(iq.id, 'minSessionDurationMinutes', e.target.value)}
                         className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                         placeholder="N/A"
                       />
@@ -217,8 +217,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <td className="px-4 py-3 whitespace-nowrap">
                       <input
                         type="number"
-                        value={iq.minSessionDurationMinutes ?? ''}
-                        onChange={(e) => handleUpdateIQField(iq.id, 'minSessionDurationMinutes', e.target.value)}
+                        value={iq.maxSessionDurationMinutes ?? ''}
+                        onChange={(e) => handleUpdateIQField(iq.id, 'maxSessionDurationMinutes', e.target.value)}
                         className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                         placeholder="N/A"
                       />
