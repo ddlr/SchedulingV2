@@ -253,12 +253,13 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                                     title={`Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
                                     aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}. Click to edit or drag to move.`}
                                 >
-                                <div className="flex flex-col h-full bg-white/20 p-2 rounded-2xl border border-white/30 shadow-sm backdrop-blur-[1px] hover:backdrop-blur-none transition-all group-hover:bg-white/30">
-                                  <div className="flex-1 min-w-0 flex flex-col justify-start">
-                                    <div className="font-black truncate text-[11px] leading-none mb-1 tracking-tight">{entryForCell.clientName || 'N/A'}</div>
-                                    <div className="flex flex-wrap items-center gap-1.5 opacity-80 font-bold uppercase tracking-tighter text-[8px]">
-                                       <span className="px-1 bg-black/5 rounded-md text-[7px]">{styling.display}</span>
-                                       <span className="whitespace-nowrap font-medium text-slate-500/80">{to12HourTime(entryForCell.startTime).replace(' ', '').toLowerCase()} – {to12HourTime(entryForCell.endTime).replace(' ', '').toLowerCase()}</span>
+                                <div className="flex flex-col h-full bg-white/10 p-1.5 rounded-xl border border-white/20 shadow-sm backdrop-blur-[2px] hover:backdrop-blur-none transition-all">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-bold truncate text-[11px] leading-tight mb-0.5">{entryForCell.clientName || 'N/A'}</div>
+                                    <div className="flex items-center gap-1 opacity-90 font-black uppercase tracking-tighter text-[8px]">
+                                       <span>{styling.display}</span>
+                                       <span>·</span>
+                                       <span>{to12HourTime(entryForCell.startTime).replace(' ', '')}</span>
                                     </div>
                                   </div>
                                 </div>
