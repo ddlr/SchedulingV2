@@ -513,7 +513,20 @@ const App: React.FC = () => {
     return summary;
   };
 
-  const TabButton: React.FC<{tabName: typeof activeTab, label: string, icon: React.ReactNode}> = ({tabName, label, icon}) => ( <button onClick={() => { setError(null); setBulkOperationSummary(null); setGaStatusMessage(null); setActiveTab(tabName);}} className={`flex items-center space-x-2 px-3 sm:px-4 py-3 font-medium rounded-t-lg transition-colors duration-150 whitespace-nowrap ${activeTab === tabName ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:bg-slate-200 hover:text-blue-500'}`}> {icon} <span className="hidden sm:inline">{label}</span> <span className="sm:hidden text-xs">{label.split(' ')[0]}</span> </button> );
+  const TabButton: React.FC<{tabName: typeof activeTab, label: string, icon: React.ReactNode}> = ({tabName, label, icon}) => (
+    <button
+      onClick={() => { setError(null); setBulkOperationSummary(null); setGaStatusMessage(null); setActiveTab(tabName);}}
+      className={`flex items-center space-x-2 px-4 py-2 font-medium rounded-full transition-all duration-200 whitespace-nowrap text-sm ${
+        activeTab === tabName
+          ? 'bg-slate-100 text-slate-900 shadow-sm'
+          : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+      }`}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sm:hidden text-xs">{label.split(' ')[0]}</span>
+    </button>
+  );
   
   // Defined inside component to access clients and therapists state
   const getCurrentCalloutEntityList = useCallback(() => {
@@ -525,63 +538,220 @@ const App: React.FC = () => {
   }, [calloutForm.entityType, clients, therapists]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-sky-100 flex flex-col">
-      <header className="bg-blue-700 text-white shadow-lg">
-        <div className="container mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">ABA Harmony Scheduler (AI)</h1>
-          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-2 md:space-x-3">
-             <div className="flex items-center space-x-2 bg-blue-600 px-3 py-1.5 rounded-md">
-                <label htmlFor="scheduleDate" className="text-sm font-medium text-blue-100">Schedule for:</label>
-                <input type="date" id="scheduleDate" value={getInputFormattedDate(selectedDate)} onChange={handleDateChange} className="bg-blue-50 text-blue-700 p-1.5 rounded-md border border-blue-300 focus:ring-2 focus:ring-white text-sm"/>
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="container mx-auto px-4 sm:px-6 py-4 flex flex-col lg:flex-row justify-between lg:items-center space-y-4 lg:space-y-0">
+          <div className="flex items-center space-x-2">
+            <div className="bg-slate-900 p-2 rounded-lg">
+               <SparklesIcon className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-2xl font-serif text-slate-900 tracking-tight">Fiddler Scheduler</h1>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
+             <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-full border border-slate-200">
+                <label htmlFor="scheduleDate" className="text-xs font-bold text-slate-500 uppercase tracking-wider">Schedule for:</label>
+                <input type="date" id="scheduleDate" value={getInputFormattedDate(selectedDate)} onChange={handleDateChange} className="bg-transparent text-slate-900 font-medium focus:outline-none text-sm cursor-pointer"/>
             </div>
             <button
               onClick={handleGenerateSchedule}
               disabled={loadingState.active || clients.length === 0 || therapists.length === 0 || !selectedDate}
-              className="bg-green-500 hover:bg-green-600 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-3 sm:px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 flex items-center space-x-2"
+              className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
               aria-live="polite"
               title={!selectedDate ? "Please select a date first" : (clients.length === 0 || therapists.length === 0 ? "Add clients and therapists first" : `Generate schedule using CSO`)}
             >
-              {loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-5 h-5" />}
-              <span className="text-sm sm:text-base">{loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? loadingState.message : `Generate Schedule`}</span>
+              {loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+              <span>{loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? loadingState.message : `Generate Schedule`}</span>
             </button>
             <button
               onClick={handleOptimizeCurrentScheduleWithGA}
               disabled={loadingState.active || !schedule || !selectedDate || clients.length === 0 || therapists.length === 0}
-              className="bg-purple-500 hover:bg-purple-600 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-semibold py-2 px-3 sm:px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 flex items-center space-x-2"
+              className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
               aria-live="polite"
               title={!schedule || !selectedDate ? "Load or generate a schedule first" : (clients.length === 0 || therapists.length === 0 ? "Client/Therapist data missing" : "Optimize current schedule with CSO Algorithm")}
             >
-              {loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-5 h-5" />}
-              <span className="text-sm sm:text-base">{loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? loadingState.message : "Evolve Current"}</span>
+              {loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+              <span>{loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? loadingState.message : "Evolve Current"}</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 sm:px-6 py-8 flex-grow">
-        <div className="bg-white p-1 sm:p-2 rounded-lg shadow-xl mb-8">
-          <div className="flex border-b border-slate-200 overflow-x-auto">
-            <TabButton tabName="clients" label="Clients" icon={<UserGroupIcon className="w-5 h-5" />} /> <TabButton tabName="therapists" label="Therapists" icon={<UserGroupIcon className="w-5 h-5" />} /> <TabButton tabName="schedule" label="View Schedule" icon={<ClockIcon className="w-5 h-5" />} /> <TabButton tabName="baseSchedules" label="Base Schedules" icon={<ClipboardDocumentListIcon className="w-5 h-5" />} /> <TabButton tabName="callouts" label="Callouts" icon={<ClipboardDocumentListIcon className="w-5 h-5" />} /> <TabButton tabName="settings" label="Settings" icon={<PaletteIconComponent />} /> <TabButton tabName="adminSettings" label="Admin" icon={<Cog8ToothIcon className="w-5 h-5" />} />
+      <main className="container mx-auto px-4 sm:px-6 py-8 flex-grow max-w-7xl">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 mb-8 overflow-hidden">
+          <div className="flex items-center space-x-1 p-2 bg-slate-50/50 border-b border-slate-100 overflow-x-auto">
+            <TabButton tabName="clients" label="Clients" icon={<UserGroupIcon className="w-4 h-4" />} />
+            <TabButton tabName="therapists" label="Staff" icon={<UserGroupIcon className="w-4 h-4" />} />
+            <TabButton tabName="schedule" label="View Schedule" icon={<ClockIcon className="w-4 h-4" />} />
+            <TabButton tabName="baseSchedules" label="Base Schedules" icon={<ClipboardDocumentListIcon className="w-4 h-4" />} />
+            <TabButton tabName="callouts" label="Callouts" icon={<ClipboardDocumentListIcon className="w-4 h-4" />} />
+            <TabButton tabName="settings" label="Settings" icon={<PaletteIconComponent />} />
+            <TabButton tabName="adminSettings" label="Admin" icon={<Cog8ToothIcon className="w-4 h-4" />} />
           </div>
-          <div className="p-3 sm:p-4 md:p-6">
+          <div className="p-4 sm:p-6 md:p-8">
             {activeTab !== 'schedule' && activeTab !== 'adminSettings' && !isSessionModalOpen && <ErrorDisplay errors={error} title="Configuration Alert" />}
             {activeTab === 'schedule' && !isSessionModalOpen && <ErrorDisplay errors={error} title="Schedule Validation Info" />}
             {activeTab === 'schedule' && gaStatusMessage && <p className={`text-sm p-3 rounded-md my-4 ${error && error.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>{gaStatusMessage}</p>}
             {activeTab === 'adminSettings' && bulkOperationSummary && bulkOperationSummary.errorCount > 0 && <ErrorDisplay errors={bulkOperationSummary.errors.map(e => ({ruleId: `ROW_${e.rowNumber}`, message: `${e.message} ${e.rowData ? `(Data: ${e.rowData.substring(0,100)}...)` : ''}`}))} title="Bulk Operation Issues"/>}
 
-            {activeTab === 'clients' && ( <div> <div className="flex justify-between items-center mb-6"> <h2 className="text-xl sm:text-2xl font-semibold text-slate-700">Manage Clients</h2> <button onClick={handleAddClient} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 flex items-center space-x-2"> <PlusIcon className="w-5 h-5" /><span>Add Client</span></button> </div> <div className="space-y-6"> {clients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))} {clients.length === 0 && <p className="text-slate-500 text-center py-4">No clients added yet.</p>} </div> </div> )}
-            {activeTab === 'therapists' && ( <div> <div className="flex justify-between items-center mb-6"> <h2 className="text-xl sm:text-2xl font-semibold text-slate-700">Manage Therapists</h2> <button onClick={handleAddTherapist} className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 flex items-center space-x-2"> <PlusIcon className="w-5 h-5" /><span>Add Therapist</span></button> </div> <div className="space-y-6"> {therapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))} {therapists.length === 0 && <p className="text-slate-500 text-center py-4">No therapists added yet.</p>} </div> </div> )}
-            {activeTab === 'schedule' && ( <div className="flex flex-col"> <h2 className="text-xl sm:text-2xl font-semibold text-slate-700 mb-4"> Schedule {selectedDate && `for ${selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`} </h2> <FilterControls allTeams={availableTeams} allTherapists={therapists} allClients={clients} selectedTeamIds={selectedTeamIds} selectedTherapistIds={selectedTherapistIds} selectedClientIds={selectedClientIds} onTeamFilterChange={handleTeamFilterChange} onTherapistFilterChange={handleTherapistFilterChange} onClientFilterChange={handleClientFilterChange} onClearFilters={handleClearFilters} /> {loadingState.active && <div className="flex justify-center items-center py-10"><LoadingSpinner /><span className="ml-3 text-slate-600">{loadingState.message}</span></div>} {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} />} {!loadingState.active && displayedSchedule && displayedSchedule.length === 0 && (!error || error.length === 0 || (error && !error.some(e => e.message.toLowerCase().includes("generated schedule is invalid")))) && <p className="text-slate-500 text-center py-10">No schedule entries match filters for {selectedDate ? getFormattedDate(selectedDate) : 'selected date'}, or the algorithm returned empty/invalid. Check messages above.</p>} {!loadingState.active && !displayedSchedule && !error && <p className="text-slate-500 text-center py-10">Select a date & "Generate Schedule". Then apply filters.</p>} {!loadingState.active && schedule && schedule.length > 0 && <ScheduleRatingPanel schedule={schedule} validationErrors={error || []} teamId={availableTeams.length > 0 ? availableTeams[0].id : undefined} />} </div> )}
-            {activeTab === 'settings' && (<SettingsPanel availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdateTeams={handleUpdateTeams} onUpdateInsuranceQualifications={handleUpdateInsuranceQualifications}/>)}
-            {activeTab === 'baseSchedules' && (<BaseScheduleManager baseSchedules={baseSchedules} onAddConfig={handleAddBaseScheduleConfig} onUpdateConfigName={handleUpdateBaseScheduleConfigName} onUpdateConfigDays={handleUpdateBaseScheduleConfigDays} onDeleteConfig={handleDeleteBaseScheduleConfig} onSetAsBase={handleSetCurrentGeneratedScheduleAsBase} onViewBase={handleViewBaseSchedule} currentGeneratedScheduleIsSet={schedule !== null && schedule.length > 0}/>)}
-            {activeTab === 'adminSettings' && ( <AdminSettingsPanel availableTeams={availableTeams} onBulkUpdateClients={handleBulkUpdateClients} onBulkUpdateTherapists={handleBulkUpdateTherapists} onUpdateInsuranceQualifications={handleUpdateInsuranceQualifications} /> )}
-            {activeTab === 'callouts' && ( <div> <h2 className="text-xl sm:text-2xl font-semibold text-slate-700 mb-6">Manage Callouts/Unavailability</h2> <form onSubmit={handleAddCallout} className="bg-slate-50 p-4 sm:p-6 rounded-lg shadow-md border border-slate-200 mb-8 space-y-4"> <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label htmlFor="calloutEntityType" className="block text-sm font-medium text-slate-600 mb-1">Entity Type</label> <select id="calloutEntityType" value={calloutForm.entityType} onChange={(e) => handleCalloutFormChange('entityType', e.target.value)} className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"> <option value="client">Client</option> <option value="therapist">Therapist</option> </select> </div> <div> <label htmlFor="calloutEntityId" className="block text-sm font-medium text-slate-600 mb-1">Select {calloutForm.entityType === 'client' ? 'Client' : 'Therapist'}</label> <select key={calloutForm.entityType} id="calloutEntityId" value={calloutForm.entityId} onChange={(e) => handleCalloutFormChange('entityId', e.target.value)} required className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"> <option value="">-- Select --</option> {getCurrentCalloutEntityList().map(entity => (<option key={entity.id} value={entity.id}>{entity.name}</option>))} </select> </div> </div> <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label htmlFor="calloutStartDate" className="block text-sm font-medium text-slate-600 mb-1">Start Date</label> <input type="date" id="calloutStartDate" value={calloutForm.startDate} onChange={(e) => handleCalloutFormChange('startDate', e.target.value)} required className="form-input block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"/> </div> <div> <label htmlFor="calloutEndDate" className="block text-sm font-medium text-slate-600 mb-1">End Date (Optional)</label> <input type="date" id="calloutEndDate" value={calloutForm.endDate || ''} onChange={(e) => handleCalloutFormChange('endDate', e.target.value)} className="form-input block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"/> <p className="text-xs text-slate-500 mt-1">Leave blank or same as Start Date for a single-day callout.</p> </div> </div> <div className="grid grid-cols-2 gap-4"> <div> <label htmlFor="calloutStartTime" className="block text-sm font-medium text-slate-600 mb-1">Start Time</label> <select id="calloutStartTime" value={calloutForm.startTime} onChange={(e) => handleCalloutFormChange('startTime', e.target.value)} required className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"> {TIME_SLOTS_H_MM.map(ts => <option key={`co-start-${ts}`} value={ts}>{ts}</option>)} </select> </div> <div> <label htmlFor="calloutEndTime" className="block text-sm font-medium text-slate-600 mb-1">End Time</label> <select id="calloutEndTime" value={calloutForm.endTime} onChange={(e) => handleCalloutFormChange('endTime', e.target.value)} required className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"> {TIME_SLOTS_H_MM.map(ts => <option key={`co-end-${ts}`} value={ts}>{ts}</option>)} </select> </div> </div> <div> <label htmlFor="calloutReason" className="block text-sm font-medium text-slate-600 mb-1">Reason (Optional)</label> <input type="text" id="calloutReason" value={calloutForm.reason || ''} onChange={(e) => handleCalloutFormChange('reason', e.target.value)} className="form-input block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Doctor's Appointment"/> </div> <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 flex items-center space-x-2"> <PlusIcon className="w-5 h-5"/><span>Add Callout</span> </button> </form> <div className="mt-8"> <h3 className="text-lg font-semibold text-slate-700 mb-3">Recorded Callouts</h3> {callouts.length === 0 ? (<p className="text-slate-500">No callouts recorded yet.</p>) : ( <ul className="space-y-3"> {callouts.map(co => ( <li key={co.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-3 bg-white rounded-md border border-slate-200 shadow-sm space-y-2 sm:space-y-0"> <div> <span className="font-semibold text-slate-800">{co.entityName}</span> ({co.entityType}) <br/> <span className="text-sm text-slate-600"> {formatCalloutDateDisplay(co.startDate, co.endDate)} from {co.startTime} to {co.endTime} </span> {co.reason && <p className="text-xs text-slate-500 italic">Reason: {co.reason}</p>} </div> <button onClick={() => handleRemoveCallout(co.id)} className="text-red-500 hover:text-red-700 transition-colors self-start sm:self-center" aria-label="Remove Callout"> <TrashIcon className="w-5 h-5"/> </button> </li> ))} </ul> )} </div> </div> )}
+            {activeTab === 'clients' && (
+              <div>
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Clients</h2>
+                  <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Add Client</span>
+                  </button>
+                </div>
+                <div className="space-y-8">
+                  {clients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                  {clients.length === 0 && (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
+                      <p className="text-slate-400">No clients added yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {activeTab === 'therapists' && (
+              <div>
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Staff</h2>
+                  <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                    <PlusIcon className="w-4 h-4" />
+                    <span>Add Staff Member</span>
+                  </button>
+                </div>
+                <div className="space-y-8">
+                  {therapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                  {therapists.length === 0 && (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
+                      <p className="text-slate-400">No staff members added yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {activeTab === 'schedule' && (
+              <div className="flex flex-col">
+                <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-6">Schedule {selectedDate && <span className="text-slate-500 font-sans text-lg block sm:inline sm:ml-2">for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>}</h2>
+                <FilterControls allTeams={availableTeams} allTherapists={therapists} allClients={clients} selectedTeamIds={selectedTeamIds} selectedTherapistIds={selectedTherapistIds} selectedClientIds={selectedClientIds} onTeamFilterChange={handleTeamFilterChange} onTherapistFilterChange={handleTherapistFilterChange} onClientFilterChange={handleClientFilterChange} onClearFilters={handleClearFilters} />
+                {loadingState.active && <div className="flex flex-col justify-center items-center py-20 bg-white rounded-3xl border border-slate-100 mb-8"><LoadingSpinner /><span className="mt-4 text-slate-500 font-medium">{loadingState.message}</span></div>}
+                {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} />}
+                {!loadingState.active && displayedSchedule && displayedSchedule.length === 0 && (!error || error.length === 0 || (error && !error.some(e => e.message.toLowerCase().includes("generated schedule is invalid")))) && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400">No schedule entries match current filters.</p></div>}
+                {!loadingState.active && !displayedSchedule && !error && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400 font-medium">Select a date and click "Generate Schedule" to begin.</p></div>}
+                {!loadingState.active && schedule && schedule.length > 0 && <ScheduleRatingPanel schedule={schedule} validationErrors={error || []} teamId={availableTeams.length > 0 ? availableTeams[0].id : undefined} />}
+              </div>
+            )}
+            {activeTab === 'settings' && (
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-8">System Settings</h2>
+                <SettingsPanel availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdateTeams={handleUpdateTeams} onUpdateInsuranceQualifications={handleUpdateInsuranceQualifications}/>
+              </div>
+            )}
+            {activeTab === 'baseSchedules' && (
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-8">Base Schedules</h2>
+                <BaseScheduleManager baseSchedules={baseSchedules} onAddConfig={handleAddBaseScheduleConfig} onUpdateConfigName={handleUpdateBaseScheduleConfigName} onUpdateConfigDays={handleUpdateBaseScheduleConfigDays} onDeleteConfig={handleDeleteBaseScheduleConfig} onSetAsBase={handleSetCurrentGeneratedScheduleAsBase} onViewBase={handleViewBaseSchedule} currentGeneratedScheduleIsSet={schedule !== null && schedule.length > 0}/>
+              </div>
+            )}
+            {activeTab === 'adminSettings' && (
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-8">Administrative Tools</h2>
+                <AdminSettingsPanel availableTeams={availableTeams} onBulkUpdateClients={handleBulkUpdateClients} onBulkUpdateTherapists={handleBulkUpdateTherapists} onUpdateInsuranceQualifications={handleUpdateInsuranceQualifications}/>
+              </div>
+            )}
+            {activeTab === 'callouts' && (
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-8">Manage Unavailability</h2>
+                <form onSubmit={handleAddCallout} className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-100 mb-12 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="calloutEntityType" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Entity Type</label>
+                      <select id="calloutEntityType" value={calloutForm.entityType} onChange={(e) => handleCalloutFormChange('entityType', e.target.value)} className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                        <option value="client">Client</option>
+                        <option value="therapist">Staff</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="calloutEntityId" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Select {calloutForm.entityType === 'client' ? 'Client' : 'Staff Member'}</label>
+                      <select key={calloutForm.entityType} id="calloutEntityId" value={calloutForm.entityId} onChange={(e) => handleCalloutFormChange('entityId', e.target.value)} required className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                        <option value="">-- Select --</option>
+                        {getCurrentCalloutEntityList().map(entity => (<option key={entity.id} value={entity.id}>{entity.name}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="calloutStartDate" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
+                      <input type="date" id="calloutStartDate" value={calloutForm.startDate} onChange={(e) => handleCalloutFormChange('startDate', e.target.value)} required className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none"/>
+                    </div>
+                    <div>
+                      <label htmlFor="calloutEndDate" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date (Optional)</label>
+                      <input type="date" id="calloutEndDate" value={calloutForm.endDate || ''} onChange={(e) => handleCalloutFormChange('endDate', e.target.value)} className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none"/>
+                      <p className="text-[10px] text-slate-400 mt-2 ml-1">Leave blank for a single-day callout.</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="calloutStartTime" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Time</label>
+                      <select id="calloutStartTime" value={calloutForm.startTime} onChange={(e) => handleCalloutFormChange('startTime', e.target.value)} required className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                        {TIME_SLOTS_H_MM.map(ts => <option key={`co-start-${ts}`} value={ts}>{ts}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="calloutEndTime" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Time</label>
+                      <select id="calloutEndTime" value={calloutForm.endTime} onChange={(e) => handleCalloutFormChange('endTime', e.target.value)} required className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                        {TIME_SLOTS_H_MM.map(ts => <option key={`co-end-${ts}`} value={ts}>{ts}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="calloutReason" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Reason (Optional)</label>
+                    <input type="text" id="calloutReason" value={calloutForm.reason || ''} onChange={(e) => handleCalloutFormChange('reason', e.target.value)} className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none" placeholder="e.g., Doctor's Appointment"/>
+                  </div>
+                  <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-8 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm ml-auto">
+                    <PlusIcon className="w-4 h-4"/>
+                    <span>Record Unavailability</span>
+                  </button>
+                </form>
+                <div className="space-y-6">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Recorded History</h3>
+                  {callouts.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400">No history found.</p></div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {callouts.map(co => (
+                        <div key={co.id} className="flex justify-between items-center p-6 bg-white rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
+                          <div>
+                            <span className="text-xs font-bold text-brand-blue uppercase tracking-tighter block mb-1">{co.entityType}</span>
+                            <span className="font-serif text-lg text-slate-900 block">{co.entityName}</span>
+                            <span className="text-sm text-slate-500 mt-2 block">
+                              {formatCalloutDateDisplay(co.startDate, co.endDate)} · {co.startTime}-{co.endTime}
+                            </span>
+                            {co.reason && <p className="text-xs text-slate-400 italic mt-2">"{co.reason}"</p>}
+                          </div>
+                          <button onClick={() => handleRemoveCallout(co.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full" aria-label="Remove Callout">
+                            <TrashIcon className="w-5 h-5"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
 
       {isSessionModalOpen && ( <SessionModal isOpen={isSessionModalOpen} onClose={handleCloseSessionModal} onSave={handleSaveSession} onDelete={sessionToEdit ? handleDeleteSession : undefined} sessionData={sessionToEdit} newSessionSlot={newSessionSlotDetails} clients={clients} therapists={therapists} insuranceQualifications={availableInsuranceQualifications} availableSessionTypes={ALL_SESSION_TYPES} timeSlots={TIME_SLOTS_H_MM} currentSchedule={schedule || []} currentError={error} clearError={() => setError(null)} /> )}
-      <footer className="bg-blue-700 text-blue-100 py-4 text-center text-sm"> <p>&copy; {new Date().getFullYear()} ABA Harmony Scheduler. AI Enhanced Scheduling.</p> </footer>
+      <footer className="bg-white border-t border-slate-100 py-8 text-center text-sm text-slate-500">
+        <div className="container mx-auto px-4">
+          <p className="font-serif text-lg text-slate-900 mb-2">Fiddler Scheduler</p>
+          <p>&copy; {new Date().getFullYear()} Fiddler Scheduler. Modern scheduling for modern teams.</p>
+        </div>
+      </footer>
     </div>
   );
 };
