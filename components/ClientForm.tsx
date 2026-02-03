@@ -52,7 +52,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
               type="color"
               value={clientColor}
               onChange={(e) => handleInputChange('color', e.target.value)}
-              className="w-10 h-10 rounded-full border-2 border-white shadow-sm cursor-pointer overflow-hidden p-0 block"
+              className="w-10 h-10 rounded-full border-2 border-white shadow-sm cursor-pointer overflow-hidden p-0 block appearance-none [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-full"
               style={{ backgroundColor: clientColor }}
               title="Customize schedule block color"
             />
