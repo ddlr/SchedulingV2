@@ -26,32 +26,32 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
   };
 
   return (
-    <div className="bg-slate-50 p-6 rounded-lg shadow-md border border-slate-200 space-y-6">
-      <div className="flex justify-between items-start mb-2">
+    <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-100 space-y-8">
+      <div className="flex justify-between items-center pb-4 border-b border-slate-50">
         <input
             type="text"
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
-            className="text-xl font-semibold text-slate-700 p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full mr-4"
-            placeholder="Therapist Name"
+            className="text-2xl font-serif text-slate-900 bg-transparent border-none focus:ring-0 focus:outline-none w-full placeholder:text-slate-300"
+            placeholder="Staff Member Name"
         />
         <button
           onClick={() => onRemove(therapist.id)}
-          className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0"
-          aria-label="Remove Therapist"
+          className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 p-2 hover:bg-red-50 rounded-full"
+          aria-label="Remove Staff Member"
         >
-          <TrashIcon className="w-6 h-6" />
+          <TrashIcon className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
         <div>
-          <label htmlFor={`role-${therapist.id}`} className="block text-sm font-medium text-slate-600 mb-1">Role:</label>
+          <label htmlFor={`role-${therapist.id}`} className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Primary Role</label>
           <select
             id={`role-${therapist.id}`}
             value={formData.role || 'BT'}
             onChange={(e) => handleInputChange('role', e.target.value as TherapistRole)}
-            className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue transition-all outline-none"
           >
             {ALL_THERAPIST_ROLES.map(role => (
               <option key={role} value={role}>{role}</option>
@@ -59,12 +59,12 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
           </select>
         </div>
         <div>
-          <label htmlFor={`teamId-${therapist.id}`} className="block text-sm font-medium text-slate-600 mb-1">Team:</label>
+          <label htmlFor={`teamId-${therapist.id}`} className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Team</label>
           <select
             id={`teamId-${therapist.id}`}
             value={formData.teamId || ''}
             onChange={(e) => handleInputChange('teamId', e.target.value)}
-            className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue transition-all outline-none"
           >
             <option value="">Unassigned</option>
             {availableTeams.map(team => (
@@ -79,7 +79,7 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
       <div>
         <SearchableMultiSelectDropdown
             id={`therapist-qualifications-${therapist.id}`}
-            label="Qualifications/Roles"
+            label="Qualifications & Credentials"
             options={availableInsuranceQualifications.map(q => q.id)}
             selectedOptions={formData.qualifications}
             onChange={handleQualificationsChange}
@@ -87,30 +87,40 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
             ariaLabel={`Qualifications for ${formData.name}`}
         />
          {availableInsuranceQualifications.length === 0 && (
-             <p className="text-xs text-slate-500 mt-1">No qualification types defined in Settings.</p>
+             <p className="text-xs text-slate-400 mt-2 italic">No qualifications defined in Settings.</p>
         )}
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-slate-600 mb-1">Can Provide Allied Health Services:</label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Allied Health Capabilities</label>
+        <div className="flex flex-wrap gap-2">
           {ALL_ALLIED_HEALTH_SERVICES.map(service => (
-            <label key={service} className="flex items-center space-x-2 p-1.5 border border-slate-200 rounded-md hover:bg-slate-100 cursor-pointer">
+            <label
+              key={service}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-xl border transition-all cursor-pointer ${
+                formData.canProvideAlliedHealth.includes(service)
+                  ? 'bg-brand-blue/5 border-brand-blue text-brand-blue'
+                  : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={formData.canProvideAlliedHealth.includes(service)}
                 onChange={() => handleAlliedHealthToggle(service)}
-                className="form-checkbox h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                className="hidden"
               />
-              <span className="text-slate-700 text-sm">{service}</span>
+              <span className="text-sm font-medium">{service}</span>
             </label>
           ))}
         </div>
       </div>
 
-      <p className="text-sm text-slate-500 mt-4">
-        Therapists are assumed to be available 8:45 AM - 5:15 PM, Monday to Friday. Maximum weekly hours are not currently enforced by the system. Only mandatory 30-minute lunch breaks will be scheduled as 'IndirectTime'.
-      </p>
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+        <p className="text-xs leading-relaxed text-slate-500">
+          <span className="font-bold uppercase tracking-tighter mr-2">Schedule Rules:</span>
+          Staff members are assumed available 8:45 AM - 5:15 PM, Mon-Fri. Mandatory 30-minute lunch breaks are scheduled as 'IndirectTime'.
+        </p>
+      </div>
     </div>
   );
 };

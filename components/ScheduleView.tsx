@@ -35,23 +35,23 @@ const getSessionTypeStyling = (sessionType: SessionType, clientId: string | null
     case 'ABA':
       return {
         display: 'ABA',
-        classes: clientColor ? '' : 'bg-blue-100 border-blue-300 text-blue-700',
+        classes: clientColor ? '' : 'bg-brand-blue/10 border-brand-blue/20 text-brand-blue',
         style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)' } : undefined
       };
     case 'AlliedHealth_OT':
       return {
         display: 'OT',
-        classes: clientColor ? '' : 'bg-green-100 border-green-300 text-green-700',
+        classes: clientColor ? '' : 'bg-emerald-100 border-emerald-200 text-emerald-700',
         style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(0.9)' } : undefined
       };
     case 'AlliedHealth_SLP':
       return {
         display: 'SLP',
-        classes: clientColor ? '' : 'bg-purple-100 border-purple-300 text-purple-700',
+        classes: clientColor ? '' : 'bg-violet-100 border-violet-200 text-violet-700',
         style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(1.1)' } : undefined
       };
-    case 'IndirectTime': return { display: 'Lunch', classes: 'bg-slate-200 border-slate-300 text-slate-700' };
-    default: return { display: sessionType, classes: 'bg-gray-100 border-gray-300 text-gray-700' };
+    case 'IndirectTime': return { display: 'Lunch', classes: 'bg-slate-100 border-slate-200 text-slate-500' };
+    default: return { display: sessionType, classes: 'bg-slate-50 border-slate-100 text-slate-400' };
   }
 };
 
@@ -128,7 +128,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
      return (
       <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
         <h3 className="text-2xl font-semibold text-blue-600 mb-4 pb-2 border-b-2 border-blue-200">{formattedDate}</h3>
-        <p className="text-slate-500 italic">No therapists match the current filters for {formattedDate}, or no therapists have been added.</p>
+        <p className="text-slate-500 italic">No staff members match the current filters for {formattedDate}.</p>
       </div>
     );
   }
@@ -166,55 +166,56 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   };
 
   return (
-    <div className="space-y-4 mt-6">
-      <div className="bg-gradient-to-r from-blue-50 to-sky-50 p-4 rounded-lg border border-blue-200 shadow-sm">
-        <div className="flex flex-wrap items-center gap-4 text-sm">
+    <div className="space-y-6 mt-8">
+      <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <span className="text-slate-700 font-medium">Drag blocks to reschedule</span>
+            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
+               <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+               </svg>
+            </div>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Drag to move</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-            <span className="text-slate-700 font-medium">Click to edit</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span className="text-slate-700 font-medium">Click empty slots to add sessions</span>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <div className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-100 border border-blue-300 rounded"></span><span className="text-xs text-slate-600">ABA</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-100 border border-green-300 rounded"></span><span className="text-xs text-slate-600">OT</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></span><span className="text-xs text-slate-600">SLP</span></div>
-            <div className="flex items-center gap-1"><span className="w-3 h-3 bg-slate-200 border border-slate-300 rounded"></span><span className="text-xs text-slate-600">Lunch</span></div>
+            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
+              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Click to Add/Edit</span>
           </div>
         </div>
+
+        <div className="flex items-center gap-4 bg-slate-50/50 p-2 rounded-2xl border border-slate-50">
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-brand-blue rounded-full"></span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">ABA</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">OT</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-violet-500 rounded-full"></span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">SLP</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-slate-300 rounded-full"></span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Lunch</span></div>
+        </div>
       </div>
-      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-lg border border-slate-200 overflow-x-auto">
-        <table className="min-w-full border-collapse border border-slate-300">
+
+      <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+        <table className="min-w-full border-separate border-spacing-0">
           <thead>
-            <tr className="bg-slate-100">
-              <th className="sticky left-0 bg-slate-100 p-2 border border-slate-300 text-sm font-medium text-slate-600 w-24 z-10">Time</th>
+            <tr>
+              <th className="sticky left-0 bg-slate-50 p-4 border-b border-r border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-24 z-30 text-center">Time</th>
               {sortedTeamIds.map(teamId => (
                 <th key={teamId}
                     colSpan={teamsData[teamId].therapists.length}
-                    className="p-2 border border-slate-300 text-sm font-medium text-center"
-                    style={{ backgroundColor: teamsData[teamId].color, color: teamsData[teamId].color === '#E2E8F0' ? '#1E293B' : 'white' }}>
+                    className="p-3 border-b border-r border-slate-100 text-[10px] font-black uppercase tracking-[0.2em] text-center z-20"
+                    style={{ color: teamsData[teamId].color === '#E2E8F0' ? '#94A3B8' : teamsData[teamId].color }}>
                   {teamsData[teamId].name}
                 </th>
               ))}
             </tr>
-            <tr className="bg-slate-50">
-                <th className="sticky left-0 bg-slate-50 p-2 border border-slate-300 text-sm font-medium text-slate-600 w-24 z-10"></th>
+            <tr>
+                <th className="sticky left-0 bg-slate-50 border-r border-slate-100 z-30"></th>
                 {sortedTeamIds.map(teamId => (
                     teamsData[teamId].therapists.map(therapist => (
-                    <th key={therapist.id} className="p-2 border border-slate-300 text-sm font-medium text-slate-600 min-w-[150px]">
-                        {therapist.name}
+                    <th key={therapist.id} className="p-3 border-b border-r border-slate-100 text-xs font-bold text-slate-500 min-w-[160px] bg-slate-50/30">
+                        {therapist.name.split(' ')[0]} <span className="text-[10px] font-normal opacity-50">{therapist.name.split(' ').slice(1).join(' ')}</span>
                     </th>
                     ))
                 ))}
@@ -224,8 +225,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             {displayTimeSlots.map(timeSlot => {
               const currentTimeSlotStartMinutes = timeToMinutes(timeSlot);
               return (
-                <tr key={timeSlot}>
-                  <td className="sticky left-0 bg-white p-2 border border-slate-300 text-xs text-slate-500 text-center font-medium w-24 z-10 h-8">{to12HourTime(timeSlot)}</td>
+                <tr key={timeSlot} className="group">
+                  <td className="sticky left-0 bg-white p-3 border-b border-r border-slate-50 text-[10px] text-slate-400 text-center font-bold w-24 z-20 h-10 group-hover:bg-slate-50 transition-colors uppercase tracking-widest">{to12HourTime(timeSlot).replace(':00', '')}</td>
                    {sortedTeamIds.map(teamId => (
                     teamsData[teamId].therapists.map(therapist => {
                         const entryForCell = daySchedule.find(entry =>
@@ -242,7 +243,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                             return (
                                 <td key={entryForCell.id}
-                                    className={`p-1.5 border border-slate-200 text-xs relative group cursor-move hover:ring-2 hover:ring-blue-400 hover:shadow-lg transition-all ${styling.classes}`}
+                                    className={`p-1 border-r border-slate-50 text-[10px] relative group cursor-move transition-all ${styling.classes}`}
                                     style={styling.style}
                                     rowSpan={rowSpan}
                                     draggable="true"
@@ -252,17 +253,13 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                                     title={`Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
                                     aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}. Click to edit or drag to move.`}
                                 >
-                                <div className="flex items-start justify-between gap-1">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-semibold truncate">{entryForCell.clientName || 'N/A'}</div>
-                                    <div className="text-[10px] uppercase font-medium">{styling.display}</div>
-                                    <div className="text-[10px]">{to12HourTime(entryForCell.startTime)} - {to12HourTime(entryForCell.endTime)}</div>
-                                  </div>
-                                  <div className="flex flex-col gap-1">
-                                    <svg className={`w-3 h-3 ${styling.style ? '' : 'text-slate-400'} opacity-60 group-hover:opacity-100 transition-opacity`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                    </svg>
-                                    <PencilIcon className={`w-3 h-3 ${styling.style ? '' : 'text-slate-500'} opacity-50 group-hover:opacity-100 transition-opacity`} />
+                                <div className="flex flex-col h-full bg-white/20 p-2 rounded-2xl border border-white/30 shadow-sm backdrop-blur-[1px] hover:backdrop-blur-none transition-all group-hover:bg-white/30">
+                                  <div className="flex-1 min-w-0 flex flex-col justify-start">
+                                    <div className="font-black truncate text-[11px] leading-none mb-1 tracking-tight">{entryForCell.clientName || 'N/A'}</div>
+                                    <div className="flex flex-wrap items-center gap-1.5 opacity-80 font-bold uppercase tracking-tighter text-[8px]">
+                                       <span className="px-1 bg-black/5 rounded-md text-[7px]">{styling.display}</span>
+                                       <span className="whitespace-nowrap font-medium text-slate-500/80">{to12HourTime(entryForCell.startTime).replace(' ', '').toLowerCase()} – {to12HourTime(entryForCell.endTime).replace(' ', '').toLowerCase()}</span>
+                                    </div>
                                   </div>
                                 </div>
                                 </td>
@@ -280,7 +277,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                         return (
                             <td
                                 key={`${therapist.id}-${timeSlot}-empty`}
-                                className="p-2 border border-slate-200 h-8 hover:bg-sky-50 hover:border-sky-300 transition-all cursor-pointer group relative"
+                                className="p-2 border-b border-r border-slate-50 h-10 hover:bg-slate-50/80 transition-all cursor-pointer group relative"
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
                                 onDrop={(e) => handleDrop(e, therapist.id, timeSlot)}
@@ -288,12 +285,13 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                                 title={`Add session for ${therapist.name} at ${to12HourTime(timeSlot)}`}
                                 aria-label={`Empty slot for ${therapist.name} at ${to12HourTime(timeSlot)}. Click to add or drag a session here.`}
                             >
-                              <span className="opacity-0 group-hover:opacity-100 text-sky-500 text-xs font-medium flex items-center justify-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Add
-                              </span>
+                              <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-full h-full transition-opacity">
+                                <div className="bg-white rounded-full shadow-sm border border-slate-100 p-1">
+                                  <svg className="w-3 h-3 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                </div>
+                              </div>
                             </td>
                         );
                     })
@@ -306,6 +304,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
          {daySchedule.length === 0 && therapistsToDisplay.length > 0 && (
              <p className="text-slate-500 italic text-center py-4">No sessions match the current filters for {formattedDate}, or no sessions are scheduled. Click on a cell to add manually.</p>
          )}
+        </div>
       </div>
     </div>
   );

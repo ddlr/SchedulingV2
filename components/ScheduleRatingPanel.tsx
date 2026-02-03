@@ -77,186 +77,122 @@ export const ScheduleRatingPanel: React.FC<ScheduleRatingPanelProps> = ({
   };
 
   return (
-    <div
-      style={{
-        padding: '20px',
-        margin: '20px 0',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-        border: '1px solid #e9ecef'
-      }}
-    >
-      <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '16px', fontWeight: 600 }}>
-        Rate This Schedule
-      </h3>
-
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', fontWeight: 500 }}>
-          How well does this schedule follow your requirements?
-        </label>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+    <div className="p-8 my-12 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-50 pb-6">
+        <div>
+          <h3 className="text-2xl font-serif text-slate-900 tracking-tight">Evaluate Intelligence</h3>
+          <p className="text-sm text-slate-400 mt-1 font-medium">How effective was the automated distribution?</p>
+        </div>
+        <div className="flex gap-2">
           {[1, 2, 3, 4, 5].map(value => (
             <button
               key={value}
               onClick={() => handleRating(value)}
-              style={{
-                padding: '10px 15px',
-                border: `2px solid ${rating === value ? '#007bff' : '#dee2e6'}`,
-                backgroundColor: rating === value ? '#007bff' : '#fff',
-                color: rating === value ? '#fff' : '#000',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 600,
-                transition: 'all 0.2s'
-              }}
+              className={`w-12 h-12 rounded-2xl border-2 font-bold transition-all ${
+                rating === value
+                  ? 'bg-slate-900 border-slate-900 text-white shadow-lg scale-110'
+                  : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200 hover:text-slate-600'
+              }`}
             >
               {value}
             </button>
           ))}
         </div>
-        <p style={{ fontSize: '12px', color: '#6c757d', margin: '5px 0' }}>
-          1 = Poor | 5 = Excellent
-        </p>
       </div>
 
-      {validationErrors.length > 0 && (
-        <div
-          style={{
-            padding: '12px',
-            marginBottom: '15px',
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffeaa7',
-            borderRadius: '6px',
-            fontSize: '13px'
-          }}
-        >
-          <strong>Issues detected: {validationErrors.length}</strong>
-          <ul style={{ marginTop: '8px', paddingLeft: '20px', margin: '8px 0 0 0' }}>
-            {validationErrors.slice(0, 3).map((err, idx) => (
-              <li key={idx} style={{ marginBottom: '4px' }}>
-                {err.ruleId}
-              </li>
-            ))}
-            {validationErrors.length > 3 && <li>... and {validationErrors.length - 3} more</li>}
-          </ul>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <div className="space-y-6">
+           {validationErrors.length > 0 && (
+            <div className="p-6 bg-amber-50 border border-amber-100 rounded-[2rem] space-y-3">
+              <div className="flex items-center gap-2">
+                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                 <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Constraint Violations ({validationErrors.length})</p>
+              </div>
+              <ul className="space-y-2 ml-3.5">
+                {validationErrors.slice(0, 3).map((err, idx) => (
+                  <li key={idx} className="text-xs text-amber-600/80 font-medium">
+                    {err.ruleId.replace(/_/g, ' ')}
+                  </li>
+                ))}
+                {validationErrors.length > 3 && <li className="text-[10px] text-amber-400 italic">...and {validationErrors.length - 3} additional issues</li>}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Observational Notes</label>
+            <textarea
+              value={feedback}
+              onChange={e => setFeedback(e.target.value)}
+              placeholder="Provide context for the AI's performance..."
+              className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-sm text-slate-700 placeholder:text-slate-300 focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all min-h-[140px] resize-none"
+            />
+          </div>
         </div>
-      )}
 
-      <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
-          Additional Feedback (optional)
-        </label>
-        <textarea
-          value={feedback}
-          onChange={e => setFeedback(e.target.value)}
-          placeholder="What could be improved? Any specific concerns?"
-          style={{
-            width: '100%',
-            padding: '10px',
-            border: '1px solid #dee2e6',
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontFamily: 'inherit',
-            resize: 'vertical',
-            minHeight: '80px'
-          }}
-        />
-      </div>
+        <div className="space-y-6">
+          <div className="flex flex-col gap-3 pt-6 lg:pt-0">
+            <button
+              onClick={handleSubmitFeedback}
+              disabled={isSubmitting || !rating}
+              className="w-full bg-brand-blue hover:bg-blue-700 disabled:bg-slate-200 text-white font-bold py-4 px-8 rounded-full shadow-lg shadow-blue-100 hover:shadow-xl transition-all flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? 'Syncing Feedback...' : 'Submit Evaluation'}
+            </button>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-        <button
-          onClick={handleSubmitFeedback}
-          disabled={isSubmitting || !rating}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: isSubmitting || !rating ? '#ccc' : '#28a745',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: isSubmitting || !rating ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
-            fontWeight: 600,
-            transition: 'background-color 0.2s'
-          }}
-        >
-          {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
-        </button>
-
-        <button
-          onClick={handleViewDiagnostics}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#17a2b8',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 600,
-            transition: 'background-color 0.2s'
-          }}
-        >
-          View System Diagnostics
-        </button>
-      </div>
-
-      {submitMessage && (
-        <div
-          style={{
-            padding: '10px',
-            marginBottom: '10px',
-            backgroundColor: '#d4edda',
-            border: '1px solid #c3e6cb',
-            borderRadius: '6px',
-            color: '#155724',
-            fontSize: '13px'
-          }}
-        >
-          {submitMessage}
-        </div>
-      )}
-
-      {diagnostics && (
-        <div
-          style={{
-            padding: '15px',
-            marginTop: '15px',
-            backgroundColor: '#e7f3ff',
-            border: '1px solid #b3d9ff',
-            borderRadius: '6px',
-            fontSize: '13px'
-          }}
-        >
-          <h4 style={{ marginTop: 0, marginBottom: '10px' }}>System Diagnostics</h4>
-          <div style={{ marginBottom: '10px' }}>
-            <strong>Average Schedule Rating:</strong>{' '}
-            <span style={{ color: diagnostics.averageRating >= 4 ? '#28a745' : '#dc3545' }}>
-              {diagnostics.averageRating.toFixed(2)} / 5
-            </span>
+            <button
+              onClick={handleViewDiagnostics}
+              className="w-full bg-white hover:bg-slate-50 text-slate-500 border border-slate-100 font-bold py-4 px-8 rounded-full transition-all flex items-center justify-center gap-2"
+            >
+              System Health Diagnostics
+            </button>
           </div>
 
-          {diagnostics.strengths.length > 0 && (
-            <div style={{ marginBottom: '10px' }}>
-              <strong>What the system does well:</strong>
-              <ul style={{ marginTop: '5px', paddingLeft: '20px', margin: '5px 0 0 0' }}>
-                {diagnostics.strengths.map((strength: string, idx: number) => (
-                  <li key={idx}>{strength}</li>
-                ))}
-              </ul>
+          {submitMessage && (
+            <div className={`p-4 rounded-2xl text-center text-xs font-bold uppercase tracking-widest animate-in fade-in zoom-in-95 duration-300 ${submitMessage.includes('Error') ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-600'}`}>
+              {submitMessage}
             </div>
           )}
+        </div>
+      </div>
 
-          {diagnostics.recommendedFocusAreas.length > 0 && (
-            <div>
-              <strong>Focus areas for improvement:</strong>
-              <ul style={{ marginTop: '5px', paddingLeft: '20px', margin: '5px 0 0 0' }}>
-                {diagnostics.recommendedFocusAreas.map((area: string, idx: number) => (
-                  <li key={idx}>{area}</li>
+      {diagnostics && (
+        <div className="p-8 bg-slate-900 rounded-[2rem] text-white space-y-6 animate-in zoom-in-95 duration-300">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xl font-serif tracking-tight">Intelligence Diagnostics</h4>
+            <div className="bg-white/10 px-4 py-1 rounded-full border border-white/10">
+               <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mr-2">Average Score:</span>
+               <span className={`text-lg font-black ${diagnostics.averageRating >= 4 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                 {diagnostics.averageRating.toFixed(1)}/5.0
+               </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Operational Strengths</p>
+              <ul className="space-y-3">
+                {diagnostics.strengths.map((strength: string, idx: number) => (
+                  <li key={idx} className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5"></div>
+                    <span className="text-sm text-slate-300">{strength}</span>
+                  </li>
                 ))}
               </ul>
             </div>
-          )}
+
+            <div className="space-y-4">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Growth Opportunities</p>
+              <ul className="space-y-3">
+                {diagnostics.recommendedFocusAreas.map((area: string, idx: number) => (
+                  <li key={idx} className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-blue mt-1.5"></div>
+                    <span className="text-sm text-slate-300">{area}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
     </div>
