@@ -68,28 +68,28 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
 
   return (
     <div className="relative flex-grow min-w-[200px]" ref={dropdownRef}>
-      <label htmlFor={`${id}-button`} className="block text-sm font-medium text-slate-600 mb-1">{label}:</label>
+      <label htmlFor={`${id}-button`} className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">{label}</label>
       <button
         id={`${id}-button`}
         type="button"
         onClick={handleToggle}
-        className="w-full bg-white border border-slate-300 rounded-md shadow-sm px-3 py-2 text-left text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex justify-between items-center"
+        className="w-full bg-white border border-slate-100 rounded-2xl shadow-sm px-4 py-3 text-left text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue flex justify-between items-center transition-all"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="truncate">{getButtonLabel()}</span>
-        <ChevronDownIcon className={`w-5 h-5 text-slate-400 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="truncate font-medium">{getButtonLabel()}</span>
+        <ChevronDownIcon className={`w-4 h-4 text-slate-400 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute z-20 mt-1 w-full bg-white border border-slate-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-20 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
           <ul className="p-2 space-y-1" role="listbox" aria-label={`${label} options`}>
             {items.length > 0 && (
-                 <li className="px-2 py-1.5 border-b border-slate-200">
-                    <label className="flex items-center space-x-2 text-sm font-medium text-slate-700 cursor-pointer">
+                 <li className="px-2 py-2 border-b border-slate-50">
+                    <label className="flex items-center space-x-3 text-sm font-semibold text-slate-900 cursor-pointer p-1 rounded-xl hover:bg-slate-50 transition-colors">
                       <input
                         type="checkbox"
-                        className="form-checkbox h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                        className="form-checkbox h-4 w-4 text-brand-blue rounded border-slate-200 focus:ring-brand-blue/20"
                         checked={isAllSelected}
                         onChange={handleSelectAll}
                         aria-label={isAllSelected ? `Deselect all ${label}` : `Select all ${label}`}
@@ -100,20 +100,20 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
             )}
             {sortedItems.map(item => (
               <li key={item.id} role="option" aria-selected={selectedIds.includes(item.id)}>
-                <label className="flex items-center space-x-2 px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer">
+                <label className="flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group">
                   <input
                     type="checkbox"
-                    className="form-checkbox h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    className="form-checkbox h-4 w-4 text-brand-blue rounded border-slate-200 focus:ring-brand-blue/20 transition-all"
                     checked={selectedIds.includes(item.id)}
                     onChange={() => handleCheckboxChange(item.id)}
                     aria-label={item.name}
                   />
-                  {item.color && <span className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} aria-hidden="true"></span>}
-                  <span className="truncate">{item.name}</span>
+                  {item.color && <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: item.color }} aria-hidden="true"></span>}
+                  <span className="truncate group-hover:text-slate-900 transition-colors">{item.name}</span>
                 </label>
               </li>
             ))}
-            {items.length === 0 && <li className="px-2 py-1.5 text-sm text-slate-500">No options available.</li>}
+            {items.length === 0 && <li className="px-3 py-4 text-sm text-slate-400 italic text-center">No options available</li>}
           </ul>
         </div>
       )}
@@ -134,10 +134,10 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   onClearFilters,
 }) => {
   return (
-    <div className="bg-slate-50 p-4 rounded-lg shadow-sm border border-slate-200 mb-6 space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:gap-4">
+    <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 mb-8 space-y-4 md:space-y-0 md:flex md:flex-wrap md:items-end md:gap-6">
       <DropdownFilter
         id="team-filter"
-        label="Teams"
+        label="Filter by Teams"
         items={allTeams.map(t => ({ id: t.id, name: t.name, color: t.color }))}
         selectedIds={selectedTeamIds}
         onSelectionChange={onTeamFilterChange}
@@ -145,28 +145,28 @@ const FilterControls: React.FC<FilterControlsProps> = ({
       />
       <DropdownFilter
         id="therapist-filter"
-        label="Therapists"
+        label="Filter by Staff"
         items={allTherapists.map(t => ({ id: t.id, name: t.name }))}
         selectedIds={selectedTherapistIds}
         onSelectionChange={onTherapistFilterChange}
-        placeholder="Filter by Therapist(s)"
+        placeholder="All Staff"
       />
       <DropdownFilter
         id="client-filter"
-        label="Clients"
+        label="Filter by Clients"
         items={allClients.map(c => ({ id: c.id, name: c.name }))}
         selectedIds={selectedClientIds}
         onSelectionChange={onClientFilterChange}
-        placeholder="Filter by Client(s)"
+        placeholder="All Clients"
       />
       
       <button
         onClick={onClearFilters}
-        className="w-full md:w-auto bg-slate-500 hover:bg-slate-600 text-white font-medium py-2.5 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 text-sm flex items-center justify-center space-x-2"
+        className="w-full md:w-auto bg-white hover:bg-slate-50 text-slate-500 font-bold py-3 px-6 rounded-2xl border border-slate-100 shadow-sm transition-all duration-200 text-sm flex items-center justify-center space-x-2"
         aria-label="Clear all schedule filters"
       >
-        <XMarkIcon className="w-4 h-4" />
-        <span>Clear Filters</span>
+        <XMarkIcon className="w-4 h-4 text-slate-400" />
+        <span>Reset</span>
       </button>
     </div>
   );

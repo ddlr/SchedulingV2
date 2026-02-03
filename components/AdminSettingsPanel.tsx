@@ -72,30 +72,36 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   `;
 
   const therapistCSVFormatDoc = `
-    <p class="mb-2"><strong>Required Columns for Therapist CSV:</strong></p>
+    <p class="mb-2"><strong>Required Columns for Staff CSV:</strong></p>
     <ul class="list-disc list-inside space-y-1 text-sm">
       <li><strong>ACTION:</strong> (Required) Must be <code>ADD_UPDATE</code> or <code>REMOVE</code>.</li>
-      <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Therapist's full name. Must be unique for reliable <code>REMOVE</code>.</li>
+      <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Staff member's full name. Must be unique for reliable <code>REMOVE</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Assignment logic similar to clients.</li>
       <li><strong>qualifications:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "RBT;CPR Certified"). New qualifications added to Settings.</li>
       <li><strong>canCoverIndirect:</strong> (Optional for <code>ADD_UPDATE</code>) <code>TRUE</code> or <code>FALSE</code>.</li>
       <li><strong>canProvideAlliedHealth:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list of allied health service types (e.g., "OT;SLP").</li>
     </ul>
-    <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a therapist with 'name' exists, they are updated. Otherwise, a new one is created.</p>
-    <p class="text-xs">For <code>REMOVE</code>, therapist with matching 'name' is removed.</p>
+    <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a staff member with 'name' exists, they are updated. Otherwise, a new one is created.</p>
+    <p class="text-xs">For <code>REMOVE</code>, staff member with matching 'name' is removed.</p>
   `;
 
   const renderDocumentation = (title: string, content: string, id: string) => (
-    <div className="border border-slate-200 rounded-md">
+    <div className="border border-slate-100 rounded-2xl overflow-hidden">
       <button
         onClick={() => toggleAccordion(id)}
-        className="w-full flex justify-between items-center p-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-t-md"
+        type="button"
+        className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 transition-all"
       >
-        <span className="font-medium text-slate-700 flex items-center"><InformationCircleIcon className="w-5 h-5 mr-2 text-blue-500" />{title}</span>
-        <span className={`transform transition-transform duration-200 ${activeAccordion === id ? 'rotate-180' : ''}`}>▼</span>
+        <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
+          <InformationCircleIcon className="w-5 h-5 text-brand-blue" />
+          {title}
+        </span>
+        <span className={`text-slate-400 transition-transform duration-200 ${activeAccordion === id ? 'rotate-180' : ''}`}>
+           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </span>
       </button>
       {activeAccordion === id && (
-        <div className="p-4 border-t border-slate-200 bg-white rounded-b-md prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: content }} />
+        <div className="p-6 bg-white border-t border-slate-100 prose prose-slate prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: content }} />
       )}
     </div>
   );
@@ -133,87 +139,95 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       <SystemConfigPanel />
 
-      <div className="p-4 bg-white rounded-lg shadow-md space-y-10">
-        <h2 className="text-2xl font-semibold text-slate-700 mb-6 border-b pb-3">Bulk Data Operations</h2>
+      <div className="p-8 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-12">
+        <h3 className="text-2xl font-serif text-slate-900 tracking-tight flex items-center gap-3">
+          <div className="w-2 h-8 bg-slate-900 rounded-full"></div>
+          Bulk Data Operations
+        </h3>
 
-        {isLoading && <div className="flex justify-center items-center my-4"><LoadingSpinner /> <span className="ml-2">Processing file...</span></div>}
+        {isLoading && <div className="flex flex-col justify-center items-center py-12 bg-slate-50 rounded-2xl"><LoadingSpinner /> <span className="mt-4 text-sm font-medium text-slate-500">Processing records...</span></div>}
 
         {renderSummary()}
 
       {/* Client Bulk Operations */}
-      <section className="space-y-4 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <h3 className="text-xl font-semibold text-slate-600">Client Data</h3>
-        {renderDocumentation("Client CSV File Format Guide", clientCSVFormatDoc, "clientDoc")}
-        <div className="mt-3">
-          <label htmlFor="client-file-input" className="block text-sm font-medium text-slate-700 mb-1">Upload Client CSV File:</label>
+      <section className="space-y-6">
+        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Client Import/Export</h4>
+        {renderDocumentation("Client CSV Structure Requirements", clientCSVFormatDoc, "clientDoc")}
+        <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 space-y-4">
+          <label htmlFor="client-file-input" className="block text-sm font-bold text-slate-700">Select Source File</label>
           <input
             type="file"
             id="client-file-input"
             accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             onChange={(e) => handleFileChange(e, 'client')}
-            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white hover:file:bg-slate-800 transition-all cursor-pointer"
           />
-        </div>
-        <div className="flex flex-wrap gap-3 mt-3">
-          <button
-            onClick={() => processBulkUpdate('client', 'ADD_UPDATE')}
-            disabled={!clientFile || isLoading}
-            className="bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
-          >
-            <DocumentArrowUpIcon className="w-5 h-5" />
-            <span>Add/Update Clients from CSV</span>
-          </button>
-          <button
-            onClick={() => processBulkUpdate('client', 'REMOVE')}
-            disabled={!clientFile || isLoading}
-            className="bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
-          >
-            <TrashIcon className="w-5 h-5" />
-            <span>Remove Clients from CSV</span>
-          </button>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              onClick={() => processBulkUpdate('client', 'ADD_UPDATE')}
+              disabled={!clientFile || isLoading}
+              className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-200 text-white font-bold py-2.5 px-6 rounded-full shadow-sm flex items-center space-x-2 text-xs transition-all"
+            >
+              <DocumentArrowUpIcon className="w-4 h-4" />
+              <span>Sync from CSV</span>
+            </button>
+            <button
+              onClick={() => processBulkUpdate('client', 'REMOVE')}
+              disabled={!clientFile || isLoading}
+              className="bg-white hover:bg-red-50 text-red-500 border border-red-100 font-bold py-2.5 px-6 rounded-full shadow-sm flex items-center space-x-2 text-xs transition-all"
+            >
+              <TrashIcon className="w-4 h-4" />
+              <span>Bulk Remove</span>
+            </button>
+          </div>
         </div>
       </section>
 
       {/* Therapist Bulk Operations */}
-      <section className="space-y-4 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <h3 className="text-xl font-semibold text-slate-600">Therapist Data</h3>
-        {renderDocumentation("Therapist CSV File Format Guide", therapistCSVFormatDoc, "therapistDoc")}
-        <div className="mt-3">
-          <label htmlFor="therapist-file-input" className="block text-sm font-medium text-slate-700 mb-1">Upload Therapist CSV File:</label>
+      <section className="space-y-6">
+        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Staff Import/Export</h4>
+        {renderDocumentation("Staff CSV Structure Requirements", therapistCSVFormatDoc, "therapistDoc")}
+        <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 space-y-4">
+          <label htmlFor="therapist-file-input" className="block text-sm font-bold text-slate-700">Select Source File</label>
           <input
             type="file"
             id="therapist-file-input"
             accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             onChange={(e) => handleFileChange(e, 'therapist')}
-            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white hover:file:bg-slate-800 transition-all cursor-pointer"
           />
-        </div>
-        <div className="flex flex-wrap gap-3 mt-3">
-          <button
-            onClick={() => processBulkUpdate('therapist', 'ADD_UPDATE')}
-            disabled={!therapistFile || isLoading}
-            className="bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
-          >
-            <DocumentArrowUpIcon className="w-5 h-5" />
-            <span>Add/Update Therapists from CSV</span>
-          </button>
-          <button
-            onClick={() => processBulkUpdate('therapist', 'REMOVE')}
-            disabled={!therapistFile || isLoading}
-            className="bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white font-semibold py-2 px-4 rounded-lg shadow flex items-center space-x-2 text-sm"
-          >
-             <TrashIcon className="w-5 h-5" />
-            <span>Remove Therapists from CSV</span>
-          </button>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              onClick={() => processBulkUpdate('therapist', 'ADD_UPDATE')}
+              disabled={!therapistFile || isLoading}
+              className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-200 text-white font-bold py-2.5 px-6 rounded-full shadow-sm flex items-center space-x-2 text-xs transition-all"
+            >
+              <DocumentArrowUpIcon className="w-4 h-4" />
+              <span>Sync from CSV</span>
+            </button>
+            <button
+              onClick={() => processBulkUpdate('therapist', 'REMOVE')}
+              disabled={!therapistFile || isLoading}
+              className="bg-white hover:bg-red-50 text-red-500 border border-red-100 font-bold py-2.5 px-6 rounded-full shadow-sm flex items-center space-x-2 text-xs transition-all"
+            >
+               <TrashIcon className="w-4 h-4" />
+              <span>Bulk Remove</span>
+            </button>
+          </div>
         </div>
       </section>
-        <p className="text-xs text-slate-500 mt-6">
-          Note: CSV processing is done client-side. For Excel files (.xlsx, .xls), ensure the first sheet contains the data with the correct headers.
-          CSV files should be comma-separated. Header row is expected. Semicolons (;) are used as separators within multi-value fields like 'insuranceRequirements'.
-        </p>
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <p className="text-[10px] text-slate-400 leading-relaxed uppercase tracking-widest font-bold mb-2">Technical Note</p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            CSV processing is performed client-side. For Excel files (.xlsx, .xls), ensure the first sheet contains the data with the correct headers.
+            CSV files should be comma-separated. Header row is expected. Semicolons (;) are used as separators within multi-value fields.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -177,7 +177,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
     const localErrors: ValidationError[] = [];
 
     if (!formData.therapistId) {
-      localErrors.push({ ruleId: "MISSING_THERAPIST", message: "Therapist must be selected."});
+      localErrors.push({ ruleId: "MISSING_THERAPIST", message: "Staff member must be selected."});
     }
     if (formData.sessionType !== 'IndirectTime' && !formData.clientId) {
       localErrors.push({ ruleId: "MISSING_CLIENT", message: "Client must be selected for non-indirect sessions."});
@@ -231,125 +231,127 @@ const SessionModal: React.FC<SessionModalProps> = ({
   const displayErrors = formError || currentError;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-labelledby="session-modal-title">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 id="session-modal-title" className="text-2xl font-semibold text-slate-700">
-            {sessionData ? 'Edit Session' : 'Add New Session'}
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-300" role="dialog" aria-modal="true" aria-labelledby="session-modal-title">
+      <div className="bg-white rounded-[2rem] shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto border border-white/20 animate-in zoom-in-95 duration-300">
+        <div className="flex justify-between items-center mb-8">
+          <h2 id="session-modal-title" className="text-2xl font-serif text-slate-900 tracking-tight">
+            {sessionData ? 'Modify Session' : 'Plan Session'}
           </h2>
-          <button onClick={() => { clearError(); onClose(); }} className="text-slate-500 hover:text-slate-700" aria-label="Close session modal">
-            <XMarkIcon className="w-6 h-6" />
+          <button onClick={() => { clearError(); onClose(); }} className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all" aria-label="Close session modal">
+            <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
 
         {displayErrors && displayErrors.length > 0 && (
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4 rounded-md text-sm" role="alert">
-            <p className="font-bold mb-1">Please correct the following:</p>
-            <ul className="list-disc list-inside space-y-0.5">
+          <div className="bg-red-50 border border-red-100 text-red-600 p-4 mb-6 rounded-2xl text-xs font-medium" role="alert">
+            <div className="flex items-center gap-2 mb-2">
+               <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+               <p className="font-bold uppercase tracking-widest">Requirements not met</p>
+            </div>
+            <ul className="space-y-1 ml-3.5">
                 {displayErrors.map((err, index) => (
-                    <li key={index}>
-                        <strong className="capitalize">{err.ruleId.replace(/_/g, ' ').toLowerCase()}:</strong> {err.message}
+                    <li key={index} className="opacity-80">
+                        {err.message}
                     </li>
                 ))}
             </ul>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="sessionDay" className="block text-sm font-medium text-slate-600">Day</label>
-            <input
-              type="text"
-              id="sessionDay"
-              value={formData.day}
-              readOnly
-              className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 cursor-not-allowed"
-              aria-readonly="true"
-            />
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="sessionDay" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Day</label>
+              <input
+                type="text"
+                id="sessionDay"
+                value={formData.day}
+                readOnly
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 font-medium cursor-not-allowed outline-none"
+                aria-readonly="true"
+              />
+            </div>
+            <div>
+              <label htmlFor="sessionType" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Session Type</label>
+              <select
+                id="sessionType"
+                value={formData.sessionType}
+                onChange={(e) => handleInputChange('sessionType', e.target.value as SessionType)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {availableSessionTypes.map(type => <option key={type} value={type}>{type === 'IndirectTime' ? 'Lunch' : type}</option>)}
+              </select>
+            </div>
           </div>
 
           <div>
-            <label htmlFor="sessionTherapist" className="block text-sm font-medium text-slate-600">Therapist</label>
+            <label htmlFor="sessionTherapist" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Staff Member</label>
             <select
               id="sessionTherapist"
               value={formData.therapistId}
               onChange={(e) => handleInputChange('therapistId', e.target.value)}
-              className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
               required
             >
-              <option value="">Select Therapist</option>
+              <option value="">Select Staff...</option>
               {therapists.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label htmlFor="sessionType" className="block text-sm font-medium text-slate-600">Session Type</label>
-            <select
-              id="sessionType"
-              value={formData.sessionType}
-              onChange={(e) => handleInputChange('sessionType', e.target.value as SessionType)}
-              className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {availableSessionTypes.map(type => <option key={type} value={type}>{type === 'IndirectTime' ? 'Lunch' : type}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="sessionClient" className="block text-sm font-medium text-slate-600">Client</label>
+            <label htmlFor="sessionClient" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Client</label>
             <select
               id="sessionClient"
               value={formData.clientId || ""}
               onChange={(e) => handleInputChange('clientId', e.target.value === "" ? null : e.target.value)}
               disabled={formData.sessionType === 'IndirectTime'}
-              className={`mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${formData.sessionType === 'IndirectTime' ? 'bg-slate-100 cursor-not-allowed' : ''}`}
+              className={`w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all ${formData.sessionType === 'IndirectTime' ? 'opacity-50 cursor-not-allowed' : ''}`}
               aria-disabled={formData.sessionType === 'IndirectTime'}
             >
               <option value="">N/A (Lunch)</option>
               {clients.sort((a,b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            {formData.sessionType === 'IndirectTime' && <p className="text-xs text-slate-500 mt-1">Client is N/A for Lunch sessions.</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="sessionStartTime" className="block text-sm font-medium text-slate-600">Start Time</label>
+              <label htmlFor="sessionStartTime" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Start Time</label>
               <select
                 id="sessionStartTime"
                 value={formData.startTime}
                 onChange={(e) => handleInputChange('startTime', e.target.value)}
-                className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
                 required
               >
-                <option value="">Select Start</option>
+                <option value="">Start</option>
                 {visibleTimeSlots.map(time => <option key={`start-${time}`} value={time}>{to12HourTime(time)}</option>)}
               </select>
             </div>
             <div>
-              <label htmlFor="sessionEndTime" className="block text-sm font-medium text-slate-600">End Time</label>
+              <label htmlFor="sessionEndTime" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">End Time</label>
               <select
                 id="sessionEndTime"
                 value={formData.endTime}
                 onChange={(e) => handleInputChange('endTime', e.target.value)}
-                className="mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
                 required
               >
-                <option value="">Select End</option>
+                <option value="">End</option>
                 {visibleTimeSlots.map(time => <option key={`end-${time}`} value={time}>{to12HourTime(time)}</option>)}
               </select>
             </div>
           </div>
 
-          <div className="flex justify-between items-center pt-4">
+          <div className="flex justify-between items-center pt-6 border-t border-slate-50">
             <div>
               {sessionData && onDelete && (
                 <button
                   type="button"
                   onClick={handleDeleteClick}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors flex items-center space-x-1.5"
+                  className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
                   aria-label="Delete Session"
                 >
-                  <TrashIcon className="w-4 h-4" />
-                  <span>Delete</span>
+                  <TrashIcon className="w-5 h-5" />
                 </button>
               )}
             </div>
@@ -357,15 +359,15 @@ const SessionModal: React.FC<SessionModalProps> = ({
               <button
                 type="button"
                 onClick={() => { clearError(); onClose(); }}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-300 transition-colors"
+                className="px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                className="px-8 py-3 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-full shadow-lg shadow-slate-200 hover:shadow-xl transition-all"
               >
-                Save Session
+                {sessionData ? 'Update Session' : 'Create Session'}
               </button>
             </div>
           </div>

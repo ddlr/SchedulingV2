@@ -73,118 +73,130 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   return (
-    <div className="space-y-10 p-4 bg-white rounded-lg shadow-md">
+    <div className="space-y-12">
       {/* Teams Management */}
-      <section>
-        <h2 className="text-xl font-semibold text-slate-700 mb-4 border-b pb-2">Manage Teams</h2>
-        <div className="mb-6 space-y-3 md:space-y-0 md:flex md:items-end md:space-x-3">
+      <section className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-sm">
+        <h3 className="text-xl font-serif text-slate-900 mb-6 flex items-center gap-2">
+          <div className="w-1.5 h-6 bg-brand-blue rounded-full"></div>
+          Manage Teams
+        </h3>
+        <div className="mb-8 flex flex-col sm:flex-row gap-3">
           <div className="flex-grow">
-            <label htmlFor="newTeamName" className="block text-sm font-medium text-slate-600 mb-1">New Team Name:</label>
+            <label htmlFor="newTeamName" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Team Name</label>
             <input
               type="text"
               id="newTeamName"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
-              className="form-input block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
               placeholder="e.g., Clinical Ninjas"
             />
           </div>
-          <button
-            onClick={handleAddTeam}
-            className="w-full md:w-auto bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 flex items-center justify-center space-x-2"
-          >
-            <PlusIcon className="w-5 h-5" />
-            <span>Add Team</span>
-          </button>
+          <div className="flex items-end">
+            <button
+              onClick={handleAddTeam}
+              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-8 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center space-x-2 text-sm"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span>Add Team</span>
+            </button>
+          </div>
         </div>
 
-        {availableTeams.length > 0 && (
-          <ul className="space-y-3">
+        {availableTeams.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {availableTeams.map(team => (
-              <li key={team.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-md border border-slate-200 shadow-sm">
+              <div key={team.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-100 transition-all hover:bg-white hover:shadow-md group">
                 {editingTeam?.id === team.id ? (
                   <div className="flex-grow flex items-center space-x-2">
                     <input
                       type="text"
                       value={editingTeamName}
                       onChange={(e) => setEditingTeamName(e.target.value)}
-                      className="form-input p-1 border border-blue-300 rounded-md flex-grow"
+                      className="w-full px-3 py-1 bg-white border border-brand-blue/30 rounded-lg text-sm outline-none"
                     />
-                    <button onClick={handleSaveEditTeam} className="text-green-600 hover:text-green-800 p-1">Save</button>
-                    <button onClick={() => setEditingTeam(null)} className="text-slate-500 hover:text-slate-700 p-1">Cancel</button>
+                    <button onClick={handleSaveEditTeam} className="text-brand-blue font-bold text-xs">Save</button>
+                    <button onClick={() => setEditingTeam(null)} className="text-slate-400 font-bold text-xs">Cancel</button>
                   </div>
                 ) : (
                   <div className="flex items-center space-x-3">
-                    <span style={{ backgroundColor: team.color }} className="w-5 h-5 rounded-full border border-slate-300"></span>
-                    <span className="text-slate-700 font-medium">{team.name}</span>
+                    <span style={{ backgroundColor: team.color }} className="w-3 h-3 rounded-full shadow-sm"></span>
+                    <span className="text-slate-700 font-bold text-sm">{team.name}</span>
                   </div>
                 )}
                 {!editingTeam || editingTeam.id !== team.id ? (
-                    <div className="space-x-2">
-                        <button onClick={() => handleStartEditTeam(team)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Team">
-                            <EditIcon className="w-5 h-5" />
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleStartEditTeam(team)} className="p-2 text-slate-300 hover:text-brand-blue rounded-lg hover:bg-white transition-all" aria-label="Edit Team">
+                            <EditIcon className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleRemoveTeam(team.id)} className="text-red-500 hover:text-red-700" aria-label="Remove Team">
-                            <TrashIcon className="w-5 h-5" />
+                        <button onClick={() => handleRemoveTeam(team.id)} className="p-2 text-slate-300 hover:text-red-500 rounded-lg hover:bg-white transition-all" aria-label="Remove Team">
+                            <TrashIcon className="w-4 h-4" />
                         </button>
                     </div>
                 ): null}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
+        ) : (
+          <div className="text-center py-10 border-2 border-dashed border-slate-50 rounded-3xl">
+            <p className="text-sm text-slate-400">No teams have been created.</p>
+          </div>
         )}
-         {availableTeams.length === 0 && <p className="text-slate-500 text-center py-3">No teams defined yet.</p>}
       </section>
 
       {/* Insurance/Qualifications Management */}
-      <section>
-        <h2 className="text-xl font-semibold text-slate-700 mb-4 border-b pb-2">Manage Insurance & Qualification Types</h2>
-        <div className="mb-6 space-y-3 md:space-y-0 md:flex md:items-end md:space-x-3">
+      <section className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-sm">
+        <h3 className="text-xl font-serif text-slate-900 mb-6 flex items-center gap-2">
+           <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+           Qualifications & Constraints
+        </h3>
+        <div className="mb-8 flex flex-col sm:flex-row gap-3">
           <div className="flex-grow">
-            <label htmlFor="newIQ" className="block text-sm font-medium text-slate-600 mb-1">New Type (Insurance or Credential):</label>
+            <label htmlFor="newIQ" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">New Credential or Payer Type</label>
             <input
               type="text"
               id="newIQ"
               value={newIQ}
               onChange={(e) => setNewIQ(e.target.value)}
-              className="form-input block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="e.g., MD_MEDICAID, TRICARE, or RBT"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              placeholder="e.g., MD_MEDICAID or RBT"
             />
           </div>
-          <button
-            onClick={handleAddIQ}
-            className="w-full md:w-auto bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow hover:shadow-md transition-colors duration-150 flex items-center justify-center space-x-2"
-          >
-            <PlusIcon className="w-5 h-5" />
-            <span>Add Type</span>
-          </button>
+          <div className="flex items-end">
+            <button
+              onClick={handleAddIQ}
+              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-8 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center space-x-2 text-sm"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span>Add Type</span>
+            </button>
+          </div>
         </div>
 
-        {availableInsuranceQualifications.length > 0 && (
-          <div className="overflow-x-auto border border-slate-200 rounded-lg shadow-sm">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Type / ID</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role Hierarchy</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Max Providers/Day</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Min Session (Min)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Max Session (Min)</th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Max Hours/Week</th>
-                  <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+        {availableInsuranceQualifications.length > 0 ? (
+          <div className="overflow-x-auto rounded-2xl border border-slate-50 shadow-inner bg-slate-50/20">
+            <table className="min-w-full divide-y divide-slate-100">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Hierarchy</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Staff/Day Cap</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Min/Max Session</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Weekly Cap</th>
+                  <th scope="col" className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest pr-6">Delete</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-slate-200">
+              <tbody className="bg-white divide-y divide-slate-50">
                 {availableInsuranceQualifications.map(iq => (
-                  <tr key={iq.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm font-medium text-slate-900">{iq.id}</span>
+                  <tr key={iq.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sm font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">{iq.id}</span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <select
                         value={iq.roleHierarchyOrder ?? ''}
                         onChange={(e) => handleUpdateIQField(iq.id, 'roleHierarchyOrder', e.target.value === '' ? undefined : parseInt(e.target.value))}
-                        className="text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        className="text-xs bg-transparent border-none font-medium text-slate-600 focus:ring-0 cursor-pointer"
                       >
                         <option value="">Default</option>
                         <option value="0">BT (0)</option>
@@ -196,45 +208,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         <option value="6">BCBA (6)</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <input
                         type="number"
                         value={iq.maxTherapistsPerDay ?? ''}
                         onChange={(e) => handleUpdateIQField(iq.id, 'maxTherapistsPerDay', e.target.value)}
-                        className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="N/A"
+                        className="w-16 bg-transparent border-none text-xs font-bold text-slate-900 focus:ring-0"
+                        placeholder="∞"
                       />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <input
-                        type="number"
-                        value={iq.minSessionDurationMinutes ?? ''}
-                        onChange={(e) => handleUpdateIQField(iq.id, 'minSessionDurationMinutes', e.target.value)}
-                        className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="N/A"
-                      />
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={iq.minSessionDurationMinutes ?? ''}
+                          onChange={(e) => handleUpdateIQField(iq.id, 'minSessionDurationMinutes', e.target.value)}
+                          className="w-12 bg-transparent border-none text-xs font-bold text-slate-900 focus:ring-0 p-0"
+                          placeholder="0"
+                        />
+                        <span className="text-slate-300">/</span>
+                        <input
+                          type="number"
+                          value={iq.maxSessionDurationMinutes ?? ''}
+                          onChange={(e) => handleUpdateIQField(iq.id, 'maxSessionDurationMinutes', e.target.value)}
+                          className="w-12 bg-transparent border-none text-xs font-bold text-slate-900 focus:ring-0 p-0"
+                          placeholder="∞"
+                        />
+                      </div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <input
-                        type="number"
-                        value={iq.maxSessionDurationMinutes ?? ''}
-                        onChange={(e) => handleUpdateIQField(iq.id, 'maxSessionDurationMinutes', e.target.value)}
-                        className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="N/A"
-                      />
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <input
                         type="number"
                         value={iq.maxHoursPerWeek ?? ''}
                         onChange={(e) => handleUpdateIQField(iq.id, 'maxHoursPerWeek', e.target.value)}
-                        className="w-20 text-sm border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="N/A"
+                        className="w-16 bg-transparent border-none text-xs font-bold text-slate-900 focus:ring-0"
+                        placeholder="∞"
                       />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => handleRemoveIQ(iq.id)} className="text-red-500 hover:text-red-700 ml-4" aria-label={`Remove ${iq.id}`}>
-                        <TrashIcon className="w-5 h-5" />
+                    <td className="px-4 py-4 whitespace-nowrap text-right pr-6">
+                      <button onClick={() => handleRemoveIQ(iq.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full" aria-label={`Remove ${iq.id}`}>
+                        <TrashIcon className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
@@ -242,8 +255,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="text-center py-10 border-2 border-dashed border-slate-50 rounded-3xl">
+            <p className="text-sm text-slate-400">No qualifications defined.</p>
+          </div>
         )}
-        {availableInsuranceQualifications.length === 0 && <p className="text-slate-500 text-center py-3">No insurance/qualification types defined yet.</p>}
       </section>
     </div>
   );

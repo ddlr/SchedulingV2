@@ -46,130 +46,134 @@ const SystemConfigPanel: React.FC = () => {
   });
 
   return (
-    <div className="space-y-8 p-4 bg-white rounded-lg shadow-md">
-      <div className="border-b pb-3">
-        <h2 className="text-2xl font-semibold text-slate-700">System Configuration</h2>
-        <p className="text-sm text-slate-500 mt-1">Configure system-wide operational settings stored in the database</p>
+    <div className="space-y-12 p-8 bg-white rounded-3xl border border-slate-100 shadow-sm">
+      <div>
+        <h2 className="text-2xl font-serif text-slate-900 tracking-tight flex items-center gap-3">
+           <div className="w-2 h-8 bg-brand-blue rounded-full"></div>
+           Global Configuration
+        </h2>
+        <p className="text-sm text-slate-400 mt-2 font-medium">Operational boundaries and system constraints</p>
       </div>
 
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-slate-600">Operating Hours</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Company Operating Hours Start</label>
-            <select
-              value={config.companyOperatingHoursStart}
-              onChange={(e) => handleTimeChange('companyOperatingHoursStart', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <section className="space-y-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Operating Hours</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Daily Start</label>
+              <select
+                value={config.companyOperatingHoursStart}
+                onChange={(e) => handleTimeChange('companyOperatingHoursStart', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Daily Close</label>
+              <select
+                value={config.companyOperatingHoursEnd}
+                onChange={(e) => handleTimeChange('companyOperatingHoursEnd', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Company Operating Hours End</label>
-            <select
-              value={config.companyOperatingHoursEnd}
-              onChange={(e) => handleTimeChange('companyOperatingHoursEnd', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-slate-600">Staff Availability</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Staff Availability Start</label>
-            <select
-              value={config.staffAssumedAvailabilityStart}
-              onChange={(e) => handleTimeChange('staffAssumedAvailabilityStart', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
+        <section className="space-y-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Staff Availability</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Earliest Arrival</label>
+              <select
+                value={config.staffAssumedAvailabilityStart}
+                onChange={(e) => handleTimeChange('staffAssumedAvailabilityStart', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Latest Departure</label>
+              <select
+                value={config.staffAssumedAvailabilityEnd}
+                onChange={(e) => handleTimeChange('staffAssumedAvailabilityEnd', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Staff Availability End</label>
-            <select
-              value={config.staffAssumedAvailabilityEnd}
-              onChange={(e) => handleTimeChange('staffAssumedAvailabilityEnd', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-slate-600">Lunch Break Configuration</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Lunch Coverage Start Time</label>
-            <select
-              value={config.lunchCoverageStartTime}
-              onChange={(e) => handleTimeChange('lunchCoverageStartTime', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
+        <section className="space-y-6 lg:col-span-2">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Lunch Break Constraints</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Earliest Start</label>
+              <select
+                value={config.lunchCoverageStartTime}
+                onChange={(e) => handleTimeChange('lunchCoverageStartTime', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Latest End</label>
+              <select
+                value={config.lunchCoverageEndTime}
+                onChange={(e) => handleTimeChange('lunchCoverageEndTime', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Ideal Start</label>
+              <select
+                value={config.idealLunchWindowStart}
+                onChange={(e) => handleTimeChange('idealLunchWindowStart', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Ideal Window End</label>
+              <select
+                value={config.idealLunchWindowEndForStart}
+                onChange={(e) => handleTimeChange('idealLunchWindowEndForStart', e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              >
+                {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Lunch Coverage End Time</label>
-            <select
-              value={config.lunchCoverageEndTime}
-              onChange={(e) => handleTimeChange('lunchCoverageEndTime', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Ideal Lunch Window Start</label>
-            <select
-              value={config.idealLunchWindowStart}
-              onChange={(e) => handleTimeChange('idealLunchWindowStart', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Ideal Lunch Window End (for Start)</label>
-            <select
-              value={config.idealLunchWindowEndForStart}
-              onChange={(e) => handleTimeChange('idealLunchWindowEndForStart', e.target.value)}
-              className="form-select block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            >
-              {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <div className="pt-4 border-t">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 text-white font-semibold py-2 px-6 rounded-lg shadow hover:shadow-md transition-colors duration-150"
-          >
-            {isSaving ? 'Saving...' : 'Save Configuration'}
-          </button>
-          {saveMessage && (
-            <p className={`text-sm font-medium ${saveMessage.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
-              {saveMessage}
-            </p>
-          )}
-        </div>
+        </section>
       </div>
 
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
-        <p className="text-sm text-blue-700">
-          <strong>Note:</strong> These settings control system-wide behavior including schedule generation, validation rules, and UI options. Changes take effect immediately across the application.
+      <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-50">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white font-bold py-3 px-12 rounded-full shadow-lg shadow-slate-200 hover:shadow-xl transition-all"
+        >
+          {isSaving ? 'Syncing...' : 'Save Configuration'}
+        </button>
+        {saveMessage && (
+          <p className={`text-sm font-bold uppercase tracking-widest ${saveMessage.includes('Error') ? 'text-red-500' : 'text-emerald-500'}`}>
+            {saveMessage}
+          </p>
+        )}
+      </div>
+
+      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+        <p className="text-xs text-slate-500 leading-relaxed">
+          <span className="font-bold text-slate-900 uppercase tracking-widest mr-2">Critical:</span>
+          These settings control global operational logic. Changes are applied immediately to all future schedule generations.
         </p>
       </div>
     </div>
