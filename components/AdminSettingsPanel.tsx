@@ -6,6 +6,7 @@ import { InformationCircleIcon } from './icons/InformationCircleIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import LoadingSpinner from './LoadingSpinner';
 import SystemConfigPanel from './SystemConfigPanel';
+import UserManagementPanel from './UserManagementPanel';
 
 const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
   availableTeams,
@@ -140,6 +141,8 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
 
   return (
     <div className="space-y-12">
+      <UserManagementPanel />
+
       <SystemConfigPanel />
 
       <div className="p-8 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-12">

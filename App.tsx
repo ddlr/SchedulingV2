@@ -22,6 +22,7 @@ import { ClipboardDocumentListIcon } from './components/icons/ClipboardDocumentL
 import { Cog8ToothIcon } from './components/icons/Cog8ToothIcon';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import ScheduleRatingPanel from './components/ScheduleRatingPanel';
+import { useAuth } from './contexts/AuthContext';
 
 import * as clientService from './services/clientService';
 import * as therapistService from './services/therapistService';
@@ -50,6 +51,7 @@ const formatCalloutDateDisplay = (startDateString: string, endDateString: string
 
 
 const App: React.FC = () => {
+  const { canEdit, canViewAdmin } = useAuth();
   const [availableTeams, setAvailableTeams] = useState<Team[]>(teamService.getTeams());
   const [availableInsuranceQualifications, setAvailableInsuranceQualifications] = useState<InsuranceQualification[]>(settingsService.getInsuranceQualifications());
   const [clients, setClients] = useState<Client[]>(clientService.getClients());
@@ -586,7 +588,7 @@ const App: React.FC = () => {
             <TabButton tabName="baseSchedules" label="Base Schedules" icon={<ClipboardDocumentListIcon className="w-4 h-4" />} />
             <TabButton tabName="callouts" label="Callouts" icon={<ClipboardDocumentListIcon className="w-4 h-4" />} />
             <TabButton tabName="settings" label="Settings" icon={<PaletteIconComponent />} />
-            <TabButton tabName="adminSettings" label="Admin" icon={<Cog8ToothIcon className="w-4 h-4" />} />
+            {canViewAdmin && <TabButton tabName="adminSettings" label="Admin" icon={<Cog8ToothIcon className="w-4 h-4" />} />}
           </div>
           <div className="p-4 sm:p-6 md:p-8">
             {activeTab !== 'schedule' && activeTab !== 'adminSettings' && !isSessionModalOpen && <ErrorDisplay errors={error} title="Configuration Alert" />}
@@ -598,10 +600,12 @@ const App: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Clients</h2>
-                  <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                    <PlusIcon className="w-4 h-4" />
-                    <span>Add Client</span>
-                  </button>
+                  {canEdit && (
+                    <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                      <PlusIcon className="w-4 h-4" />
+                      <span>Add Client</span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-8">
                   {clients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
@@ -617,10 +621,12 @@ const App: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Staff</h2>
-                  <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                    <PlusIcon className="w-4 h-4" />
-                    <span>Add Staff Member</span>
-                  </button>
+                  {canEdit && (
+                    <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                      <PlusIcon className="w-4 h-4" />
+                      <span>Add Staff Member</span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-8">
                   {therapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
