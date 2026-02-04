@@ -30,6 +30,7 @@ import * as teamService from './services/teamService';
 import * as settingsService from './services/settingsService';
 import * as baseScheduleService from './services/baseScheduleService';
 import * as calloutService from './services/calloutService';
+import { dailyScheduleService } from './services/dailyScheduleService';
 import { subscribeToSystemConfig } from './services/systemConfigService';
 import { updateCachedConfig } from './constants';
 
@@ -51,7 +52,7 @@ const formatCalloutDateDisplay = (startDateString: string, endDateString: string
 
 
 const App: React.FC = () => {
-  const { canEdit, canViewAdmin } = useAuth();
+  const { canEdit, canViewAdmin, user } = useAuth();
   const [availableTeams, setAvailableTeams] = useState<Team[]>(teamService.getTeams());
   const [availableInsuranceQualifications, setAvailableInsuranceQualifications] = useState<InsuranceQualification[]>(settingsService.getInsuranceQualifications());
   const [clients, setClients] = useState<Client[]>(clientService.getClients());
@@ -76,6 +77,9 @@ const App: React.FC = () => {
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
 
   const [bulkOperationSummary, setBulkOperationSummary] = useState<BulkOperationSummary | null>(null);
+
+  const [isModified, setIsModified] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
 
   const getCurrentDateString = () => new Date().toISOString().split('T')[0];
 
@@ -132,9 +136,71 @@ const App: React.FC = () => {
     if (dateString) {
       const [year, month, day] = dateString.split('-').map(Number);
       setSelectedDate(new Date(year, month - 1, day));
-      // NOT clearing schedule to allow multi-day build-up for weekly limits
     } else {
       setSelectedDate(null);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedDate) {
+      const dateString = selectedDate.toISOString().split('T')[0];
+      const selectedDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
+
+      const loadInitialSchedule = async () => {
+        const ds = await dailyScheduleService.getDailySchedule(dateString);
+        if (ds) {
+          setSchedule(prev => {
+            const otherDays = (prev || []).filter(e => e.day !== selectedDayOfWeek);
+            return [...otherDays, ...ds.schedule_data];
+          });
+          setIsPublished(true);
+          setIsModified(false);
+        } else {
+          if (!canEdit) {
+            setSchedule(prev => (prev || []).filter(e => e.day !== selectedDayOfWeek));
+          }
+          setIsPublished(false);
+          setIsModified(false);
+        }
+      };
+
+      loadInitialSchedule();
+
+      const unsubscribe = dailyScheduleService.subscribeToDailySchedule(dateString, (ds) => {
+        if (ds && ds.schedule_date === dateString) {
+          if (!canEdit) {
+            setSchedule(prev => {
+              const otherDays = (prev || []).filter(e => e.day !== selectedDayOfWeek);
+              return [...otherDays, ...ds.schedule_data];
+            });
+            setIsPublished(true);
+            setIsModified(false);
+          }
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [selectedDate, canEdit]);
+
+  const handlePublishSchedule = async () => {
+    if (!selectedDate || !schedule || !user) return;
+    const dateString = selectedDate.toISOString().split('T')[0];
+    const dayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
+
+    // Only save entries for the selected day
+    const dayEntries = schedule.filter(e => e.day === dayOfWeek);
+
+    setLoadingState({ active: true, message: 'Publishing Schedule...' });
+    const result = await dailyScheduleService.saveDailySchedule(dateString, dayOfWeek, dayEntries, user.email, error || []);
+    setLoadingState({ active: false, message: '' });
+
+    if (result.success) {
+      setIsPublished(true);
+      setIsModified(false);
+      alert('Schedule published successfully!');
+    } else {
+      alert('Failed to publish schedule: ' + result.error);
     }
   };
 
@@ -168,6 +234,7 @@ const App: React.FC = () => {
     const newUpdatedSchedule = [...scheduleWithoutOriginal, proposedNewEntry];
 
     setSchedule(newUpdatedSchedule);
+    setIsModified(true);
 
     const validationErrors = validateFullSchedule(newUpdatedSchedule, clients, therapists, availableInsuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
     if (validationErrors.length > 0) {
@@ -206,6 +273,7 @@ const App: React.FC = () => {
     }
 
     setSchedule(newUpdatedSchedule);
+    setIsModified(true);
 
     if (selectedDate) {
         const validationErrors = validateFullSchedule(newUpdatedSchedule, clients, therapists, availableInsuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
@@ -232,6 +300,7 @@ const App: React.FC = () => {
     
     // FIX: Update state
     setSchedule(newUpdatedSchedule);
+    setIsModified(true);
 
     // FIX: Validate independently
     if (selectedDate) {
@@ -338,6 +407,7 @@ const App: React.FC = () => {
       const combinedSchedule = [...otherDayEntries, ...newDayEntries];
       
       setSchedule(combinedSchedule);
+      setIsModified(true);
       
       if (result.finalValidationErrors.length > 0) {
          setError(result.finalValidationErrors);
@@ -374,6 +444,7 @@ const App: React.FC = () => {
        const combinedSchedule = [...otherDayEntries, ...newDayEntries];
 
        setSchedule(combinedSchedule);
+       setIsModified(true);
        
        if (result.finalValidationErrors.length > 0) {
           setError(result.finalValidationErrors);
@@ -555,26 +626,42 @@ const App: React.FC = () => {
                 <label htmlFor="scheduleDate" className="text-xs font-bold text-slate-500 uppercase tracking-wider">Schedule for:</label>
                 <input type="date" id="scheduleDate" value={getInputFormattedDate(selectedDate)} onChange={handleDateChange} className="bg-transparent text-slate-900 font-medium focus:outline-none text-sm cursor-pointer"/>
             </div>
-            <button
-              onClick={handleGenerateSchedule}
-              disabled={loadingState.active || clients.length === 0 || therapists.length === 0 || !selectedDate}
-              className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
-              aria-live="polite"
-              title={!selectedDate ? "Please select a date first" : (clients.length === 0 || therapists.length === 0 ? "Add clients and therapists first" : `Generate schedule using CSO`)}
-            >
-              {loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
-              <span>{loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? loadingState.message : `Generate Schedule`}</span>
-            </button>
-            <button
-              onClick={handleOptimizeCurrentScheduleWithGA}
-              disabled={loadingState.active || !schedule || !selectedDate || clients.length === 0 || therapists.length === 0}
-              className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
-              aria-live="polite"
-              title={!schedule || !selectedDate ? "Load or generate a schedule first" : (clients.length === 0 || therapists.length === 0 ? "Client/Therapist data missing" : "Optimize current schedule with CSO Algorithm")}
-            >
-              {loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
-              <span>{loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? loadingState.message : "Evolve Current"}</span>
-            </button>
+            {canEdit && (
+              <>
+                <button
+                  onClick={handleGenerateSchedule}
+                  disabled={loadingState.active || clients.length === 0 || therapists.length === 0 || !selectedDate}
+                  className="bg-brand-blue hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
+                  aria-live="polite"
+                  title={!selectedDate ? "Please select a date first" : (clients.length === 0 || therapists.length === 0 ? "Add clients and therapists first" : `Generate schedule using CSO`)}
+                >
+                  {loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+                  <span>{loadingState.active && loadingState.message.toLowerCase().includes("optimizing") ? loadingState.message : `Generate Schedule`}</span>
+                </button>
+                <button
+                  onClick={handleOptimizeCurrentScheduleWithGA}
+                  disabled={loadingState.active || !schedule || !selectedDate || clients.length === 0 || therapists.length === 0}
+                  className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm"
+                  aria-live="polite"
+                  title={!schedule || !selectedDate ? "Load or generate a schedule first" : (clients.length === 0 || therapists.length === 0 ? "Client/Therapist data missing" : "Optimize current schedule with CSO Algorithm")}
+                >
+                  {loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+                  <span>{loadingState.active && loadingState.message.toLowerCase().includes("evolving") ? loadingState.message : "Evolve Current"}</span>
+                </button>
+                {isModified && (
+                  <button
+                    onClick={handlePublishSchedule}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm animate-pulse"
+                    title="Publish these changes to the database so others can see them"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Publish Changes</span>
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -643,10 +730,18 @@ const App: React.FC = () => {
                 <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-6">Schedule {selectedDate && <span className="text-slate-500 font-sans text-lg block sm:inline sm:ml-2">for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>}</h2>
                 <FilterControls allTeams={availableTeams} allTherapists={therapists} allClients={clients} selectedTeamIds={selectedTeamIds} selectedTherapistIds={selectedTherapistIds} selectedClientIds={selectedClientIds} onTeamFilterChange={handleTeamFilterChange} onTherapistFilterChange={handleTherapistFilterChange} onClientFilterChange={handleClientFilterChange} onClearFilters={handleClearFilters} />
                 {loadingState.active && <div className="flex flex-col justify-center items-center py-20 bg-white rounded-3xl border border-slate-100 mb-8"><LoadingSpinner /><span className="mt-4 text-slate-500 font-medium">{loadingState.message}</span></div>}
-                {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} />}
+                {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} canEdit={canEdit} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} />}
                 {!loadingState.active && displayedSchedule && displayedSchedule.length === 0 && (!error || error.length === 0 || (error && !error.some(e => e.message.toLowerCase().includes("generated schedule is invalid")))) && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400">No schedule entries match current filters.</p></div>}
-                {!loadingState.active && !displayedSchedule && !error && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400 font-medium">Select a date and click "Generate Schedule" to begin.</p></div>}
-                {!loadingState.active && schedule && schedule.length > 0 && <ScheduleRatingPanel schedule={schedule} validationErrors={error || []} teamId={availableTeams.length > 0 ? availableTeams[0].id : undefined} />}
+                {!loadingState.active && !displayedSchedule && !error && (
+                  <div className="text-center py-20 bg-white rounded-3xl border border-slate-100">
+                    <p className="text-slate-400 font-medium">
+                      {canEdit
+                        ? 'Select a date and click "Generate Schedule" to begin.'
+                        : 'No schedule has been published for this date yet.'}
+                    </p>
+                  </div>
+                )}
+                {!loadingState.active && canEdit && schedule && schedule.length > 0 && <ScheduleRatingPanel schedule={schedule} validationErrors={error || []} teamId={availableTeams.length > 0 ? availableTeams[0].id : undefined} />}
               </div>
             )}
             {activeTab === 'settings' && (

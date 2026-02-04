@@ -109,6 +109,7 @@ export interface ScheduleViewProps {
   clients: Client[];
   availableTeams: Team[];
   scheduledFullDate: Date | null;
+  canEdit?: boolean;
   onMoveScheduleEntry: (draggedEntryId: string, newTherapistId: string, newStartTime: string) => void;
   onOpenEditSessionModal: (entry: ScheduleEntry) => void;
   onOpenAddSessionModal: (therapistId: string, therapistName: string, startTime: string, day: DayOfWeek) => void;

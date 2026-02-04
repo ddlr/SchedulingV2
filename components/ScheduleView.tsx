@@ -70,6 +70,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     clients,
     availableTeams,
     scheduledFullDate,
+    canEdit = true,
     onMoveScheduleEntry,
     onOpenEditSessionModal,
     onOpenAddSessionModal
@@ -169,22 +170,26 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     <div className="space-y-6 mt-8">
       <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
-               <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-               </svg>
-            </div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Drag to move</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
-              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Click to Add/Edit</span>
-          </div>
+          {canEdit && (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
+                   <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                   </svg>
+                </div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Drag to move</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">Click to Add/Edit</span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-4 bg-slate-50/50 p-2 rounded-2xl border border-slate-50">
@@ -243,15 +248,15 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                             return (
                                 <td key={entryForCell.id}
-                                    className={`p-1 border-r border-slate-50 text-[10px] relative group cursor-move transition-all ${styling.classes}`}
+                                    className={`p-1 border-r border-slate-50 text-[10px] relative group transition-all ${canEdit ? 'cursor-move' : ''} ${styling.classes}`}
                                     style={styling.style}
                                     rowSpan={rowSpan}
-                                    draggable="true"
-                                    onDragStart={(e) => handleDragStart(e, entryForCell)}
-                                    onDragEnd={handleDragEnd}
-                                    onClick={() => onOpenEditSessionModal(entryForCell)}
-                                    title={`Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
-                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}. Click to edit or drag to move.`}
+                                    draggable={canEdit ? "true" : "false"}
+                                    onDragStart={canEdit ? (e) => handleDragStart(e, entryForCell) : undefined}
+                                    onDragEnd={canEdit ? handleDragEnd : undefined}
+                                    onClick={canEdit ? () => onOpenEditSessionModal(entryForCell) : undefined}
+                                    title={canEdit ? `Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}` : `${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
+                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}.`}
                                 >
                                 <div className="flex flex-col h-full bg-white/10 p-1.5 rounded-xl border border-white/20 shadow-sm backdrop-blur-[2px] hover:backdrop-blur-none transition-all">
                                   <div className="flex-1 min-w-0">
@@ -278,21 +283,23 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                         return (
                             <td
                                 key={`${therapist.id}-${timeSlot}-empty`}
-                                className="p-2 border-b border-r border-slate-50 h-10 hover:bg-slate-50/80 transition-all cursor-pointer group relative"
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={(e) => handleDrop(e, therapist.id, timeSlot)}
-                                onClick={() => onOpenAddSessionModal(therapist.id, therapist.name, timeSlot, scheduledDayOfWeek)}
-                                title={`Add session for ${therapist.name} at ${to12HourTime(timeSlot)}`}
-                                aria-label={`Empty slot for ${therapist.name} at ${to12HourTime(timeSlot)}. Click to add or drag a session here.`}
+                                className={`p-2 border-b border-r border-slate-50 h-10 transition-all group relative ${canEdit ? 'hover:bg-slate-50/80 cursor-pointer' : ''}`}
+                                onDragOver={canEdit ? handleDragOver : undefined}
+                                onDragLeave={canEdit ? handleDragLeave : undefined}
+                                onDrop={canEdit ? (e) => handleDrop(e, therapist.id, timeSlot) : undefined}
+                                onClick={canEdit ? () => onOpenAddSessionModal(therapist.id, therapist.name, timeSlot, scheduledDayOfWeek) : undefined}
+                                title={canEdit ? `Add session for ${therapist.name} at ${to12HourTime(timeSlot)}` : undefined}
+                                aria-label={`Empty slot for ${therapist.name} at ${to12HourTime(timeSlot)}.`}
                             >
-                              <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-full h-full transition-opacity">
-                                <div className="bg-white rounded-full shadow-sm border border-slate-100 p-1">
-                                  <svg className="w-3 h-3 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                                  </svg>
+                              {canEdit && (
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-full h-full transition-opacity">
+                                  <div className="bg-white rounded-full shadow-sm border border-slate-100 p-1">
+                                    <svg className="w-3 h-3 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </td>
                         );
                     })
