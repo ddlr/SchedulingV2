@@ -13,22 +13,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onUpdateInsuranceQualifications,
 }) => {
   const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamColor, setNewTeamColor] = useState(TEAM_COLORS[0]);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [editingTeamName, setEditingTeamName] = useState('');
+  const [editingTeamColor, setEditingTeamColor] = useState('');
 
   const [newIQ, setNewIQ] = useState('');
   const [editingIQ, setEditingIQ] = useState<InsuranceQualification | null>(null);
 
   const handleAddTeam = () => {
     if (newTeamName.trim() === '') return;
-    const nextColorIndex = availableTeams.length % TEAM_COLORS.length;
     const newTeam: Team = {
       id: `team-${Date.now()}`,
       name: newTeamName.trim(),
-      color: TEAM_COLORS[nextColorIndex],
+      color: newTeamColor,
     };
     onUpdateTeams([...availableTeams, newTeam]);
     setNewTeamName('');
+    const nextColorIndex = (availableTeams.length + 1) % TEAM_COLORS.length;
+    setNewTeamColor(TEAM_COLORS[nextColorIndex]);
   };
 
   const handleRemoveTeam = (teamId: string) => {
@@ -38,18 +41,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleStartEditTeam = (team: Team) => {
     setEditingTeam(team);
     setEditingTeamName(team.name);
+    setEditingTeamColor(team.color);
   };
 
   const handleSaveEditTeam = () => {
     if (editingTeam && editingTeamName.trim() !== '') {
       onUpdateTeams(
         availableTeams.map(team =>
-          team.id === editingTeam.id ? { ...team, name: editingTeamName.trim() } : team
+          team.id === editingTeam.id ? { ...team, name: editingTeamName.trim(), color: editingTeamColor } : team
         )
       );
     }
     setEditingTeam(null);
     setEditingTeamName('');
+    setEditingTeamColor('');
   };
 
   const handleAddIQ = () => {
@@ -81,6 +86,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           Manage Teams
         </h3>
         <div className="mb-8 flex flex-col sm:flex-row gap-3">
+          <div className="flex-shrink-0 flex items-end pb-1">
+             <div className="relative group">
+                <input
+                  type="color"
+                  value={newTeamColor}
+                  onChange={(e) => setNewTeamColor(e.target.value)}
+                  className="w-12 h-12 rounded-2xl border-2 border-white shadow-sm cursor-pointer overflow-hidden p-0 block appearance-none [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-2xl [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-2xl"
+                  title="Choose team color"
+                />
+                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] px-2 py-1 rounded-md whitespace-nowrap z-10 shadow-lg">
+                  Team Color
+                </div>
+              </div>
+          </div>
           <div className="flex-grow">
             <label htmlFor="newTeamName" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Team Name</label>
             <input
@@ -109,6 +128,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <div key={team.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-100 transition-all hover:bg-white hover:shadow-md group">
                 {editingTeam?.id === team.id ? (
                   <div className="flex-grow flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={editingTeamColor}
+                      onChange={(e) => setEditingTeamColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer overflow-hidden p-0 block appearance-none [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-lg [&::-moz-color-swatch]:border-none [&::-moz-color-swatch]:rounded-lg"
+                    />
                     <input
                       type="text"
                       value={editingTeamName}
