@@ -1,13 +1,13 @@
 
 import React, { useState } from 'react';
-import { Client, ClientFormProps, AlliedHealthNeed, AlliedHealthServiceType } from '../types';
-import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
+import { Client, ClientFormProps, AlliedHealthNeed, AlliedHealthServiceType, DayOfWeek } from '../types';
+import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, DAYS_OF_WEEK } from '../constants';
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
 import { getClientColor } from '../utils/colorUtils';
 
-const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
+const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
   const [formData, setFormData] = useState<Client>(client);
 
   const handleInputChange = (field: keyof Client, value: any) => {
@@ -19,17 +19,16 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
   const handleAlliedHealthChange = (index: number, field: keyof AlliedHealthNeed, value: any) => {
     const newAlliedHealthNeeds = [...formData.alliedHealthNeeds];
     (newAlliedHealthNeeds[index] as any)[field] = value;
-     if (field === 'durationMinutes') {
-        (newAlliedHealthNeeds[index] as any)[field] = parseInt(value,10) || 0;
-    }
-    if (field === 'frequencyPerWeek') {
-        (newAlliedHealthNeeds[index]as any)[field] = parseInt(value,10) || 0;
-    }
     handleInputChange('alliedHealthNeeds', newAlliedHealthNeeds);
   };
 
   const addAlliedHealthNeed = () => {
-    const newNeed: AlliedHealthNeed = { type: 'OT', frequencyPerWeek: 1, durationMinutes: 30 };
+    const newNeed: AlliedHealthNeed = {
+      type: 'OT',
+      startTime: COMPANY_OPERATING_HOURS_START || '09:00',
+      endTime: '10:00',
+      specificDays: [DayOfWeek.MONDAY]
+    };
     handleInputChange('alliedHealthNeeds', [...formData.alliedHealthNeeds, newNeed]);
   };
 
@@ -126,38 +125,96 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
            <button onClick={addAlliedHealthNeed} className="text-brand-blue hover:text-blue-700 font-bold text-xs flex items-center space-x-1 py-1 px-2 hover:bg-blue-50 rounded-lg transition-all"> <PlusIcon className="w-3 h-3" /> <span>Add Requirement</span> </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {formData.alliedHealthNeeds.map((need, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center p-4 bg-slate-50/50 border border-slate-100 rounded-2xl">
-              <div className="md:col-span-3">
-                <select value={need.type} onChange={(e) => handleAlliedHealthChange(index, 'type', e.target.value as AlliedHealthServiceType)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"> {ALL_ALLIED_HEALTH_SERVICES.map(type => <option key={type} value={type}>{type}</option>)} </select>
+            <div key={index} className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-grow mr-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Service Type</label>
+                    <select
+                      value={need.type}
+                      onChange={(e) => handleAlliedHealthChange(index, 'type', e.target.value as AlliedHealthServiceType)}
+                      className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                    >
+                      {ALL_ALLIED_HEALTH_SERVICES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Assigned Staff (Optional)</label>
+                    <select
+                      value={need.therapistId || ""}
+                      onChange={(e) => handleAlliedHealthChange(index, 'therapistId', e.target.value || undefined)}
+                      className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                    >
+                      <option value="">Any Qualified Staff</option>
+                      {therapists
+                        .filter(t => t.canProvideAlliedHealth.includes(need.type))
+                        .map(t => (
+                          <option key={t.id} value={t.id}>{t.name} ({t.role})</option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeAlliedHealthNeed(index)}
+                  className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl mt-4"
+                  aria-label="Remove Allied Health Need"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
               </div>
-              <div className="md:col-span-2">
-                <input type="number" placeholder="Freq/Week" value={need.frequencyPerWeek} onChange={(e) => handleAlliedHealthChange(index, 'frequencyPerWeek', e.target.value)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none" min="0"/>
-              </div>
-              <div className="md:col-span-2">
-                <input type="number" placeholder="Mins/Session" value={need.durationMinutes} onChange={(e) => handleAlliedHealthChange(index, 'durationMinutes', e.target.value)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none" min="15" step="15"/>
-              </div>
-              <div className="md:col-span-4 flex space-x-2">
-                  <select
-                      value={need.preferredTimeSlot?.startTime || ""}
-                      onChange={(e) => handleAlliedHealthChange(index, 'preferredTimeSlot', { ...need.preferredTimeSlot, startTime: e.target.value || COMPANY_OPERATING_HOURS_START })}
-                      className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
-                  >
-                      <option value="">Start</option>
-                      {TIME_SLOTS_H_MM.map(time => <option key={`pref-start-${time}`} value={time}>{time}</option>)}
-                  </select>
-                  <select
-                      value={need.preferredTimeSlot?.endTime || ""}
-                      onChange={(e) => handleAlliedHealthChange(index, 'preferredTimeSlot', { ...need.preferredTimeSlot, endTime: e.target.value || COMPANY_OPERATING_HOURS_END })}
-                      className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
-                  >
-                        <option value="">End</option>
-                      {TIME_SLOTS_H_MM.map(time => <option key={`pref-end-${time}`} value={time}>{time}</option>)}
-                  </select>
-              </div>
-              <div className="md:col-span-1 flex justify-end">
-                <button onClick={() => removeAlliedHealthNeed(index)} className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl" aria-label="Remove Allied Health Need"> <TrashIcon className="w-4 h-4" /> </button>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Time Window</label>
+                  <div className="flex space-x-2">
+                    <select
+                        value={need.startTime}
+                        onChange={(e) => handleAlliedHealthChange(index, 'startTime', e.target.value)}
+                        className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                    >
+                        {TIME_SLOTS_H_MM.map(time => <option key={`start-${time}`} value={time}>{time}</option>)}
+                    </select>
+                    <span className="self-center text-slate-400">to</span>
+                    <select
+                        value={need.endTime}
+                        onChange={(e) => handleAlliedHealthChange(index, 'endTime', e.target.value)}
+                        className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                    >
+                        {TIME_SLOTS_H_MM.map(time => <option key={`end-${time}`} value={time}>{time}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Specific Days</label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map(day => {
+                      const isSelected = (need.specificDays || []).includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const currentDays = need.specificDays || [];
+                            const newDays = isSelected
+                              ? currentDays.filter(d => d !== day)
+                              : [...currentDays, day];
+                            handleAlliedHealthChange(index, 'specificDays', newDays);
+                          }}
+                          className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
+                            isSelected
+                              ? 'bg-brand-blue text-white shadow-sm'
+                              : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          {day.substring(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           ))}

@@ -518,7 +518,30 @@ const App: React.FC = () => {
                 const clientTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
                 let insuranceReqs: string[] | undefined = rowData.insurancerequirements !== undefined ? (rowData.insurancerequirements ? rowData.insurancerequirements.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
                 if(insuranceReqs) insuranceReqs.forEach(req => newInsuranceRequirementsFound.add(req));
-                let ahNeeds: AlliedHealthNeed[] | undefined = rowData.alliedhealthneeds !== undefined ? (rowData.alliedhealthneeds ? rowData.alliedhealthneeds.split(';').map(needStr => { const [type, freqStr, durStr] = needStr.split(':').map(s => s.trim()); return (type === 'OT' || type === 'SLP') && freqStr && durStr ? { type, frequencyPerWeek: parseInt(freqStr) || 1, durationMinutes: parseInt(durStr) || 30 } as AlliedHealthNeed : null; }).filter(n => n) as AlliedHealthNeed[] : []) : undefined;
+                let ahNeeds: AlliedHealthNeed[] | undefined = rowData.alliedhealthneeds !== undefined ? (rowData.alliedhealthneeds ? rowData.alliedhealthneeds.split(';').map(needStr => {
+                    const [type, start, end, daysStr, therapistName] = needStr.split(':').map(s => s.trim());
+                    if ((type === 'OT' || type === 'SLP') && start && end && daysStr) {
+                        const specificDays = daysStr.split(',').map(d => {
+                            const trimmed = d.trim();
+                            // Map short names to full enum names if necessary
+                            if (trimmed.toLowerCase().startsWith('mon')) return DayOfWeek.MONDAY;
+                            if (trimmed.toLowerCase().startsWith('tue')) return DayOfWeek.TUESDAY;
+                            if (trimmed.toLowerCase().startsWith('wed')) return DayOfWeek.WEDNESDAY;
+                            if (trimmed.toLowerCase().startsWith('thu')) return DayOfWeek.THURSDAY;
+                            if (trimmed.toLowerCase().startsWith('fri')) return DayOfWeek.FRIDAY;
+                            return trimmed as DayOfWeek;
+                        });
+                        const therapist = therapistName ? therapists.find(t => t.name.toLowerCase() === therapistName.toLowerCase()) : undefined;
+                        return {
+                            type,
+                            startTime: start,
+                            endTime: end,
+                            specificDays,
+                            therapistId: therapist?.id
+                        } as AlliedHealthNeed;
+                    }
+                    return null;
+                }).filter(n => n) as AlliedHealthNeed[] : []) : undefined;
                 const partialClient: Partial<Client> = { name: rowData.name };
                 if (clientTeam !== undefined || rowData.teamname !== undefined) partialClient.teamId = clientTeam?.id;
                 if (insuranceReqs !== undefined) partialClient.insuranceRequirements = insuranceReqs;

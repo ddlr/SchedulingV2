@@ -196,10 +196,56 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Lunches
+        const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
+
+        // Pass 1: Allied Health (FIXED TIMES & STAFF)
+        shuffledC.forEach(target => {
+            target.c.alliedHealthNeeds.forEach(need => {
+                if (need.specificDays && !need.specificDays.includes(this.day)) return;
+                if (!need.startTime || !need.endTime) return;
+
+                const s = Math.floor((timeToMinutes(need.startTime) - OP_START) / SLOT_SIZE);
+                const e = Math.ceil((timeToMinutes(need.endTime) - OP_START) / SLOT_SIZE);
+                const len = e - s;
+
+                if (s < 0 || e > NUM_SLOTS || len <= 0) return;
+
+                if (tracker.isCFree(target.ci, s, len)) {
+                    const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
+
+                    const possibleT = this.therapists.map((t, ti) => ({t, ti}))
+                        .filter(x => {
+                            if (need.therapistId && x.t.id !== need.therapistId) return false;
+                            if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
+
+                            // Qualification check (flexible based on system config)
+                            // Skip if a specific therapist was requested
+                            if (!need.therapistId) {
+                                const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
+                                const qualExists = this.insuranceQualifications.some(q => q.id === reqQual);
+                                if (qualExists && !x.t.qualifications.includes(reqQual)) return false;
+                            }
+
+                            if (!tracker.isTFree(x.ti, s, len)) return false;
+                            return true;
+                        })
+                        .sort((a, b) => this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role));
+
+                    if (possibleT.length > 0) {
+                        const q = possibleT[0];
+                        schedule.push(this.ent(target.ci, q.ti, s, len, type));
+                        tracker.book(q.ti, target.ci, s, len);
+                        tSessionCount[q.ti]++;
+                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                    }
+                }
+            });
+        });
+
+        // Pass 2: Lunches
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
         shuffledT.forEach(q => {
-            // Check if already has a lunch or indirect task in the lunch window from initialSchedule
+            // Check if already has a lunch or indirect task in the lunch window from initialSchedule or AH pass
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
@@ -215,52 +261,6 @@ export class FastScheduler {
                     break;
                 }
             }
-        });
-
-        const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
-
-        // Pass 2: Allied Health
-        shuffledC.forEach(target => {
-            target.c.alliedHealthNeeds.forEach(need => {
-                if (need.specificDays && !need.specificDays.includes(this.day)) return;
-                const len = Math.ceil(need.durationMinutes / SLOT_SIZE);
-
-                // Weekly and Duration Limit Check
-                const currentMins = clientMinutes.get(target.ci) || 0;
-                const maxD = this.getMaxDuration(target.c);
-                if (currentMins + (len * SLOT_SIZE) > this.getMaxWeeklyMinutes(target.c)) return;
-                if (len * SLOT_SIZE > maxD) return;
-
-                const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
-                const slots = [];
-                for (let s = 0; s <= NUM_SLOTS - len; s++) slots.push(s);
-                // Heuristic: Prefer placing AH at edges, but with some randomness to explore
-                slots.sort((a, b) => (Math.min(a, NUM_SLOTS - (a + len)) - Math.min(b, NUM_SLOTS - (b + len))) + (Math.random() - 0.5) * 4);
-                for (const s of slots) {
-                    if (tracker.isCFree(target.ci, s, len)) {
-                        const possibleT = this.therapists.map((t, ti) => ({t, ti}))
-                            .filter(x => {
-                                if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
-                                const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
-                                if (!x.t.qualifications.includes(reqQual)) return false;
-                                if (!tracker.isTFree(x.ti, s, len)) return false;
-                                // Insurance provider limit check
-                                const maxP = this.getMaxProviders(target.c);
-                                if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(x.ti)) return false;
-                                return true;
-                            })
-                            .sort((a, b) => this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role));
-                        if (possibleT.length > 0) {
-                            const q = possibleT[0];
-                            schedule.push(this.ent(target.ci, q.ti, s, len, type));
-                            tracker.book(q.ti, target.ci, s, len);
-                            tSessionCount[q.ti]++;
-                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                            break;
-                        }
-                    }
-                }
-            });
         });
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)

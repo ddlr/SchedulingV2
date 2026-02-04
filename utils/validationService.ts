@@ -120,14 +120,15 @@ export const validateSessionEntry = (
       });
     }
 
-    // Check for back-to-back same client sessions (no break allowed)
+    // Check for back-to-back same client sessions (no break allowed if SAME session type)
     if (clientId && existingEntry.clientId === clientId &&
         existingEntry.therapistId === therapistId &&
         existingEntry.day === day &&
+        existingEntry.sessionType === sessionType &&
         (existingEntry.endTime === startTime || existingEntry.startTime === endTime)) {
       errors.push({
           ruleId: "SAME_CLIENT_BACK_TO_BACK",
-          message: `Therapist ${therapistName} cannot work with client ${clientName} back-to-back without a break. There must be at least a 15-minute gap or a different session between consecutive sessions with the same client.`,
+          message: `Therapist ${therapistName} cannot work with client ${clientName} back-to-back for multiple ${sessionType} sessions without a break. There must be at least a 15-minute gap between identical session types.`,
           details: { entryId: entryToValidate.id, conflictingEntryId: existingEntry.id }
       });
     }
@@ -198,13 +199,51 @@ export const validateSessionEntry = (
           details: { entryId: entryToValidate.id }
       });
     }
-    const requiredQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified"; 
-     if (therapistData && !therapistData.qualifications.includes(requiredQual)) {
+
+    // Flexible Certification Check: only require if it exists in the insuranceQualifications system
+    const requiredQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified";
+    const qualExists = insuranceQualifications.some(q => q.id === requiredQual);
+     if (qualExists && therapistData && !therapistData.qualifications.includes(requiredQual)) {
         errors.push({
           ruleId: "ALLIED_HEALTH_CERTIFICATION_MISSING",
           message: `Therapist ${therapistName} lacks qualification "${requiredQual}" for ${serviceType}.`,
           details: { entryId: entryToValidate.id }
       });
+     }
+
+     // Client Requirement Match
+     if (clientId) {
+        const clientData = clients.find(c => c.id === clientId);
+        if (clientData) {
+            const need = clientData.alliedHealthNeeds.find(n => n.type === serviceType);
+            if (need) {
+                if (need.specificDays && !need.specificDays.includes(day)) {
+                    errors.push({
+                        ruleId: "ALLIED_HEALTH_INVALID_DAY",
+                        message: `${serviceType} for ${clientName} is only allowed on: ${need.specificDays.join(', ')}.`
+                    });
+                }
+                if (need.startTime && startTime !== need.startTime) {
+                    errors.push({
+                        ruleId: "ALLIED_HEALTH_INVALID_START_TIME",
+                        message: `${serviceType} for ${clientName} must start at ${to12HourTime(need.startTime)}.`
+                    });
+                }
+                if (need.endTime && endTime !== need.endTime) {
+                    errors.push({
+                        ruleId: "ALLIED_HEALTH_INVALID_END_TIME",
+                        message: `${serviceType} for ${clientName} must end at ${to12HourTime(need.endTime)}.`
+                    });
+                }
+                if (need.therapistId && therapistId !== need.therapistId) {
+                    const assignedTherapist = therapists.find(t => t.id === need.therapistId);
+                    errors.push({
+                        ruleId: "ALLIED_HEALTH_INVALID_THERAPIST",
+                        message: `${serviceType} for ${clientName} is assigned to ${assignedTherapist?.name || need.therapistId}.`
+                    });
+                }
+            }
+        }
      }
   }
 
