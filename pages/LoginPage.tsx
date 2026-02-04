@@ -32,7 +32,6 @@ const LoginPage: React.FC = () => {
       const result = await login(email, password);
 
       if (result.success) {
-        await new Promise(resolve => setTimeout(resolve, 200));
         navigate('/app', { replace: true });
       } else {
         setIsLoading(false);

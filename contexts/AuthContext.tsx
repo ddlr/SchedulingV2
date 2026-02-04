@@ -58,7 +58,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const response = await authService.login(email, password);
     if (response.success && response.user) {
       setUser(response.user);
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
     return response;
   };

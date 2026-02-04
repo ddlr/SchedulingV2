@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import LoadingSpinner from './LoadingSpinner';
 
 interface ProtectedRouteProps {
@@ -10,16 +11,20 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin = false }) => {
   const { isAuthenticated, loading, user } = useAuth();
-  const [isStable, setIsStable] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    if (!loading) {
-      const timer = setTimeout(() => setIsStable(true), 150);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, isAuthenticated]);
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setHasSession(session !== null);
+      setSessionChecked(true);
+    };
 
-  if (loading || !isStable) {
+    checkSession();
+  }, [isAuthenticated]);
+
+  if (loading || !sessionChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <LoadingSpinner />
@@ -27,7 +32,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !hasSession) {
     return <Navigate to="/login" replace />;
   }
 
