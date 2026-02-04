@@ -95,10 +95,10 @@ export const authService = {
 
   onAuthStateChange(callback: (user: User | null) => void) {
     return supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session && event === 'SIGNED_IN') {
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         const user = await this.getCurrentUser();
         callback(user);
-      } else if (event === 'SIGNED_OUT') {
+      } else if (event === 'SIGNED_OUT' || !session) {
         callback(null);
       }
     });

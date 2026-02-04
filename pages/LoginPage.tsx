@@ -28,14 +28,19 @@ const LoginPage: React.FC = () => {
 
     setIsLoading(true);
 
-    const result = await login(email, password);
+    try {
+      const result = await login(email, password);
 
-    setIsLoading(false);
-
-    if (result.success) {
-      navigate('/app');
-    } else {
-      setError(result.error || 'Login failed');
+      if (result.success) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        navigate('/app', { replace: true });
+      } else {
+        setIsLoading(false);
+        setError(result.error || 'Login failed');
+      }
+    } catch (error) {
+      setIsLoading(false);
+      setError('An unexpected error occurred');
     }
   };
 
