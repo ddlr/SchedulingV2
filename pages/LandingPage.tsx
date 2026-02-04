@@ -21,7 +21,7 @@ const LandingPage: React.FC = () => {
                 <SparklesIcon className="w-6 h-6 text-slate-900" />
                 <span className="text-lg font-bold text-slate-900">Fiddler Scheduler</span>
               </div>
-              <span className="text-xs text-slate-600 ml-8">Calm scheduling for ABA operations</span>
+              <span className="text-xs text-slate-600 ml-8">Smarter scheduling for ABA operations</span>
             </div>
             <div className="flex items-center gap-8">
               <a href="#features" className="text-slate-700 hover:text-slate-900 font-medium">Features</a>
@@ -276,7 +276,7 @@ const LandingPage: React.FC = () => {
               <span className="text-base font-bold text-slate-900">Fiddler Scheduler</span>
             </div>
             <p className="text-slate-600 text-sm">
-              Calm scheduling for ABA operations
+              Smarter scheduling for ABA operations
             </p>
           </div>
         </div>
