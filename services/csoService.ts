@@ -32,8 +32,11 @@ class BitTracker {
     }
     public book(ti: number, ci: number, s: number, l: number) {
         const m = ((1n << BigInt(l)) - 1n) << BigInt(s);
-        this.tBusy[ti] |= m;
-        if (ci >= 0) { this.cBusy[ci] |= m; this.cT[ci].add(ti); }
+        if (ti >= 0) this.tBusy[ti] |= m;
+        if (ci >= 0) {
+            this.cBusy[ci] |= m;
+            if (ti >= 0) this.cT[ci].add(ti);
+        }
     }
 }
 
@@ -106,7 +109,7 @@ export class FastScheduler {
     }
 
     private getMaxDuration(c: Client): number {
-        let max = 180; // Default ABA max
+        let max = 480; // Default ABA max (8 hours)
         let foundCustom = false;
         c.insuranceRequirements.forEach(reqId => {
             const q = this.insuranceQualifications.find(qual => qual.id === reqId);
@@ -172,11 +175,20 @@ export class FastScheduler {
                 const s = Math.max(0, Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE));
                 const l = Math.ceil((timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)) / SLOT_SIZE);
 
-                if (ti >= 0 && ci >= 0 && tracker.isTFree(ti, s, l) && tracker.isCFree(ci, s, l)) {
-                    schedule.push({ ...entry, id: generateId() });
-                    tracker.book(ti, ci, s, l);
-                    tSessionCount[ti]++;
-                    clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
+                // Allow unassigned AH sessions from initialSchedule to still be pushed and block client time
+                if (ci >= 0 && tracker.isCFree(ci, s, l)) {
+                    if (ti >= 0) {
+                        if (tracker.isTFree(ti, s, l)) {
+                            schedule.push({ ...entry, id: generateId() });
+                            tracker.book(ti, ci, s, l);
+                            tSessionCount[ti]++;
+                            clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
+                        }
+                    } else {
+                        schedule.push({ ...entry, id: generateId() });
+                        tracker.book(-1, ci, s, l);
+                        clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
+                    }
                 }
             });
 
@@ -257,6 +269,11 @@ export class FastScheduler {
                         schedule.push(this.ent(target.ci, q.ti, s, len, type));
                         tracker.book(q.ti, target.ci, s, len);
                         tSessionCount[q.ti]++;
+                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                    } else {
+                        // Push unassigned AH session if no therapist is found, still blocking client time
+                        schedule.push(this.ent(target.ci, -1, s, len, type));
+                        tracker.book(-1, target.ci, s, len);
                         clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                     }
                 }
@@ -365,8 +382,18 @@ export class FastScheduler {
 
     private ent(ci: number, ti: number, s: number, l: number, type: SessionType): ScheduleEntry {
         const client = ci >= 0 ? this.clients[ci] : null;
-        const therapist = this.therapists[ti];
-        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: therapist.id, therapistName: therapist.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
+        const therapist = ti >= 0 ? this.therapists[ti] : null;
+        return {
+            id: generateId(),
+            clientId: client ? client.id : null,
+            clientName: client ? client.name : null,
+            therapistId: therapist ? therapist.id : null,
+            therapistName: therapist ? therapist.name : null,
+            day: this.day,
+            startTime: minutesToTime(OP_START + s * SLOT_SIZE),
+            endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE),
+            sessionType: type
+        };
     }
 
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {

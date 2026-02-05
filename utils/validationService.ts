@@ -257,8 +257,8 @@ export const validateSessionEntry = (
         return q && q.maxSessionDurationMinutes !== undefined;
     });
 
-    if (!hasCustomMax && duration > 180) {
-        errors.push({ ruleId: "ABA_DURATION_TOO_LONG", message: "ABA session cannot exceed default maximum of 180 minutes. Set a custom 'Max Session' in Insurance settings to allow longer sessions." });
+    if (!hasCustomMax && duration > 480) {
+        errors.push({ ruleId: "ABA_DURATION_TOO_LONG", message: "ABA session cannot exceed default maximum of 480 minutes (8 hours). Set a custom 'Max Session' in Insurance settings to allow longer sessions." });
     }
   } else if (sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP') {
     if (duration <= 0) errors.push({ ruleId: "ALLIED_HEALTH_DURATION_INVALID", message: `${sessionType} session must have positive duration.` });

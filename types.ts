@@ -26,8 +26,6 @@ export interface AlliedHealthNeed {
   startTime: string;
   endTime: string;
   specificDays: DayOfWeek[];
-  frequencyPerWeek?: number;
-  durationMinutes?: number;
 }
 
 export interface InsuranceQualification {
