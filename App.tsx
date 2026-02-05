@@ -88,8 +88,10 @@ const App: React.FC = () => {
     const sessions: ScheduleEntry[] = [];
 
     currentClients.forEach(client => {
-      if (!client.alliedHealthNeeds) return;
+      if (!client.alliedHealthNeeds || !Array.isArray(client.alliedHealthNeeds)) return;
       client.alliedHealthNeeds.forEach(need => {
+        const sessionType = need.sessionType || (need as any).type;
+        if (!sessionType || !need.specificDays || !Array.isArray(need.specificDays)) return;
         if (!need.specificDays.includes(dayOfWeek)) return;
 
         // Check if client is out during this specific need's time
@@ -104,7 +106,7 @@ const App: React.FC = () => {
         const therapist = need.therapistId ? currentTherapists.find(t => t.id === need.therapistId) : null;
 
         sessions.push({
-          id: `ah-stub-${client.id}-${need.sessionType}-${need.startTime}`,
+          id: `ah-stub-${client.id}-${sessionType}-${need.startTime}`,
           clientId: client.id,
           clientName: client.name,
           therapistId: therapist?.id || null,
@@ -112,7 +114,7 @@ const App: React.FC = () => {
           day: dayOfWeek,
           startTime: need.startTime,
           endTime: need.endTime,
-          sessionType: need.sessionType
+          sessionType: sessionType
         });
       });
     });
@@ -254,7 +256,7 @@ const App: React.FC = () => {
 
       // Also remove AH sessions that are no longer in profile
       const finalDay = newDay.filter(e => {
-        if (!e.sessionType.startsWith('AlliedHealth_')) return true;
+        if (!e.sessionType || typeof e.sessionType !== 'string' || !e.sessionType.startsWith('AlliedHealth_')) return true;
         const stillValid = ahSessions.some(ah =>
           e.clientId === ah.clientId &&
           e.sessionType === ah.sessionType &&
@@ -276,7 +278,7 @@ const App: React.FC = () => {
       }
       return [...otherDays, ...finalDay];
     });
-  }, [selectedDate, clients, therapists, callouts, getAlliedHealthSessionsForDate, canEdit]);
+  }, [selectedDate, clients, therapists, callouts, getAlliedHealthSessionsForDate, canEdit, schedule]);
 
   const handlePublishSchedule = async () => {
     if (!selectedDate || !schedule || !user) return;

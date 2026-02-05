@@ -126,14 +126,18 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
         </div>
 
         <div className="space-y-4">
-          {formData.alliedHealthNeeds.map((need, index) => (
+          {(formData.alliedHealthNeeds || []).map((need, index) => {
+            const currentSessionType = need.sessionType || (need as any).type || '';
+            const serviceSubtype = currentSessionType.includes('_') ? currentSessionType.split('_')[1] : currentSessionType;
+
+            return (
             <div key={index} className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl space-y-4">
               <div className="flex justify-between items-start">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-grow mr-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Service Type</label>
                     <select
-                      value={need.sessionType.split('_')[1]}
+                      value={serviceSubtype}
                       onChange={(e) => handleAlliedHealthChange(index, 'sessionType', `AlliedHealth_${e.target.value}`)}
                       className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"
                     >
@@ -149,7 +153,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
                     >
                       <option value="">Any Qualified Staff</option>
                       {therapists
-                        .filter(t => t.canProvideAlliedHealth.includes(need.sessionType.split('_')[1] as any))
+                        .filter(t => t.canProvideAlliedHealth.includes(serviceSubtype as any))
                         .map(t => (
                           <option key={t.id} value={t.id}>{t.name} ({t.role})</option>
                         ))
@@ -217,8 +221,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
                 </div>
               </div>
             </div>
-          ))}
-          {formData.alliedHealthNeeds.length === 0 && (
+          );})}
+          {(!formData.alliedHealthNeeds || formData.alliedHealthNeeds.length === 0) && (
             <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
               <p className="text-sm text-slate-400">No allied health requirements added.</p>
             </div>

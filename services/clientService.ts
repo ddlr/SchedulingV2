@@ -23,7 +23,10 @@ const loadClients = async () => {
       teamId: row.team_id || undefined,
       color: row.color || undefined,
       insuranceRequirements: row.insurance_requirements || [],
-      alliedHealthNeeds: row.allied_health_needs || []
+      alliedHealthNeeds: (row.allied_health_needs || []).map((need: any) => ({
+        ...need,
+        sessionType: need.sessionType || need.type
+      }))
     }));
 
     notifyListeners();
@@ -93,7 +96,10 @@ export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Clie
       teamId: data.team_id || undefined,
       color: data.color || undefined,
       insuranceRequirements: data.insurance_requirements || [],
-      alliedHealthNeeds: data.allied_health_needs || []
+      alliedHealthNeeds: (data.allied_health_needs || []).map((need: any) => ({
+        ...need,
+        sessionType: need.sessionType || need.type
+      }))
     };
 
     await loadClients();
