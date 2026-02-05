@@ -29,7 +29,20 @@ const loadTherapists = async () => {
     notifyListeners();
   } catch (error) {
     console.error("Error loading therapists from Supabase:", error);
-    _therapists = [];
+    // Development fallback
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      _therapists = [
+        {
+          id: 'dev-therapist-1',
+          name: 'Sample Therapist (Dev)',
+          role: 'BT',
+          qualifications: [],
+          canProvideAlliedHealth: ['OT', 'SLP']
+        }
+      ];
+    } else {
+      _therapists = [];
+    }
     notifyListeners();
   }
 };

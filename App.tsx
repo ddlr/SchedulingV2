@@ -233,7 +233,7 @@ const App: React.FC = () => {
     const ahSessions = getAlliedHealthSessionsForDate(selectedDate, clients, therapists, callouts);
 
     setSchedule(prev => {
-      if (!prev) return null;
+      if (!prev) return [];
       const otherDays = prev.filter(e => e.day !== selectedDayOfWeek);
       const currentDay = prev.filter(e => e.day === selectedDayOfWeek);
 
@@ -515,7 +515,7 @@ const App: React.FC = () => {
     } catch (e: any) {
       console.error("Error in CSO schedule generation:", e);
       setError([{ ruleId: "CSO_GENERATION_ERROR", message: e.message || "An unexpected error occurred during schedule optimization." }]);
-      setSchedule(null);
+      setSchedule([]);
       setGaStatusMessage(`Error: ${e.message || "Unknown error."}`);
     } finally {
       setLoadingState({ active: false, message: 'Processing...' });

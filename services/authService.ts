@@ -14,8 +14,21 @@ export interface AuthResponse {
   error?: string;
 }
 
+const isMockMode = !import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const devAdmin: User = {
+  id: 'dev-admin-id',
+  email: 'admin@fiddlerscheduler.com',
+  full_name: 'Developer Admin',
+  role: 'admin',
+  is_active: true
+};
+
 export const authService = {
   async login(email: string, password: string): Promise<AuthResponse> {
+    if (isMockMode) {
+      return { success: true, user: devAdmin };
+    }
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -60,6 +73,7 @@ export const authService = {
   },
 
   async getCurrentUser(): Promise<User | null> {
+    if (isMockMode) return devAdmin;
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -89,11 +103,16 @@ export const authService = {
   },
 
   async isAuthenticated(): Promise<boolean> {
+    if (isMockMode) return true;
     const { data: { session } } = await supabase.auth.getSession();
     return session !== null;
   },
 
   onAuthStateChange(callback: (user: User | null) => void) {
+    if (isMockMode) {
+      setTimeout(() => callback(devAdmin), 0);
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    }
     return supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {

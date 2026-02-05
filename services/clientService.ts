@@ -29,7 +29,27 @@ const loadClients = async () => {
     notifyListeners();
   } catch (error) {
     console.error("Error loading clients from Supabase:", error);
-    _clients = [];
+    // Development fallback
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      _clients = [
+        {
+          id: 'dev-client-1',
+          name: 'Sample Client (Dev)',
+          insuranceRequirements: [],
+          alliedHealthNeeds: [
+            {
+              sessionType: 'AlliedHealth_OT',
+              startTime: '09:00',
+              endTime: '10:00',
+              specificDays: ['Monday' as any],
+              therapistId: 'dev-therapist-1'
+            }
+          ]
+        }
+      ];
+    } else {
+      _clients = [];
+    }
     notifyListeners();
   }
 };
