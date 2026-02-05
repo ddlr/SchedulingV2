@@ -162,8 +162,29 @@ export class FastScheduler {
         });
 
         if (initialSchedule) {
+            // First pass: Only push AH sessions from initialSchedule to ensure they get priority
             initialSchedule.forEach(entry => {
                 if (entry.day !== this.day) return;
+                if (!entry.sessionType.startsWith('AlliedHealth_')) return;
+
+                const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
+                const ci = this.clients.findIndex(c => c.id === entry.clientId);
+                const s = Math.max(0, Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE));
+                const l = Math.ceil((timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)) / SLOT_SIZE);
+
+                if (ti >= 0 && ci >= 0 && tracker.isTFree(ti, s, l) && tracker.isCFree(ci, s, l)) {
+                    schedule.push({ ...entry, id: generateId() });
+                    tracker.book(ti, ci, s, l);
+                    tSessionCount[ti]++;
+                    clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
+                }
+            });
+
+            // Second pass: Push other sessions from initialSchedule
+            initialSchedule.forEach(entry => {
+                if (entry.day !== this.day) return;
+                if (entry.sessionType.startsWith('AlliedHealth_')) return;
+
                 const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
                 const ci = this.clients.findIndex(c => c.id === entry.clientId);
                 const s = Math.max(0, Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE));
@@ -173,17 +194,15 @@ export class FastScheduler {
                     if (ci >= 0) {
                         if (!this.meetsInsurance(this.therapists[ti], this.clients[ci])) return;
 
-                        // Enforce Max Duration even for initial sessions (allows fixing invalid sessions)
                         const durationMinutes = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
                         if (durationMinutes > this.getMaxDuration(this.clients[ci])) return;
 
-                        // Enforce BTB rule for initial sessions
-                        if (this.isBTB(schedule, entry.clientId!, entry.therapistId, s, l)) return;
+                        if (this.isBTB(schedule, entry.clientId!, entry.therapistId, s, l, entry.sessionType)) return;
                     }
 
                     schedule.push({ ...entry, id: generateId() });
                     tracker.book(ti, ci, s, l);
-                    if (ci >= 0 && (entry.sessionType === 'ABA' || entry.sessionType.startsWith('AlliedHealth_'))) {
+                    if (ci >= 0 && entry.sessionType === 'ABA') {
                         tSessionCount[ti]++;
                         clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (l * SLOT_SIZE));
                     }
@@ -200,6 +219,7 @@ export class FastScheduler {
 
         // Pass 1: Allied Health (FIXED TIMES & STAFF)
         shuffledC.forEach(target => {
+            if (!target.c.alliedHealthNeeds) return;
             target.c.alliedHealthNeeds.forEach(need => {
                 if (need.specificDays && !need.specificDays.includes(this.day)) return;
                 if (!need.startTime || !need.endTime) return;
@@ -211,17 +231,18 @@ export class FastScheduler {
                 if (s < 0 || e > NUM_SLOTS || len <= 0) return;
 
                 if (tracker.isCFree(target.ci, s, len)) {
-                    const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
+                    const type: SessionType = need.sessionType;
+                    const serviceType = type === 'AlliedHealth_OT' ? 'OT' : 'SLP';
 
                     const possibleT = this.therapists.map((t, ti) => ({t, ti}))
                         .filter(x => {
                             if (need.therapistId && x.t.id !== need.therapistId) return false;
-                            if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
+                            if (!x.t.canProvideAlliedHealth.includes(serviceType)) return false;
 
                             // Qualification check (flexible based on system config)
                             // Skip if a specific therapist was requested
                             if (!need.therapistId) {
-                                const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
+                                const reqQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified";
                                 const qualExists = this.insuranceQualifications.some(q => q.id === reqQual);
                                 if (qualExists && !x.t.qualifications.includes(reqQual)) return false;
                             }
@@ -308,7 +329,7 @@ export class FastScheduler {
                                 }
                                 if (gapAfter > 0 && gapAfter < minLenSlots) continue;
 
-                                if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
+                                if (this.isBTB(schedule, target.c.id, q.t.id, s, len, 'ABA')) continue;
 
                                 // Final duration safety check
                                 if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
@@ -336,10 +357,10 @@ export class FastScheduler {
         });
     }
 
-    private isBTB(s: GeneratedSchedule, cid: string, tid: string, startSlot: number, len: number) {
+    private isBTB(s: GeneratedSchedule, cid: string, tid: string, startSlot: number, len: number, type: SessionType) {
         const startMin = OP_START + startSlot * SLOT_SIZE;
         const endMin = OP_START + (startSlot + len) * SLOT_SIZE;
-        return s.some(x => x.clientId === cid && x.therapistId === tid && (timeToMinutes(x.endTime) === startMin || timeToMinutes(x.startTime) === endMin));
+        return s.some(x => x.clientId === cid && x.therapistId === tid && x.sessionType === type && (timeToMinutes(x.endTime) === startMin || timeToMinutes(x.startTime) === endMin));
     }
 
     private ent(ci: number, ti: number, s: number, l: number, type: SessionType): ScheduleEntry {

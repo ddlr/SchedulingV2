@@ -21,7 +21,7 @@ export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RB
 
 
 export interface AlliedHealthNeed {
-  type: AlliedHealthServiceType;
+  sessionType: SessionType;
   therapistId?: string;
   startTime: string;
   endTime: string;
@@ -63,9 +63,9 @@ export interface Therapist {
 export interface ScheduleEntry {
   id: string; // Unique ID for each entry
   clientName: string | null;
-  clientId: string | null; // New: ID of the client
-  therapistName: string;
-  therapistId: string; // New: ID of the therapist
+  clientId: string | null; // ID of the client
+  therapistName: string | null;
+  therapistId: string | null; // ID of the therapist
   day: DayOfWeek;
   startTime: string; // HH:MM
   endTime: string;   // HH:MM

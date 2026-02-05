@@ -32,7 +32,7 @@ const LoginPage: React.FC = () => {
       const result = await login(email, password);
 
       if (result.success) {
-        navigate('/app', { replace: true });
+        navigate('/dashboard', { replace: true });
       } else {
         setIsLoading(false);
         setError(result.error || 'Login failed');

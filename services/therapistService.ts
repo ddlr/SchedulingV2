@@ -30,6 +30,7 @@ const loadTherapists = async () => {
   } catch (error) {
     console.error("Error loading therapists from Supabase:", error);
     _therapists = [];
+    notifyListeners();
   }
 };
 

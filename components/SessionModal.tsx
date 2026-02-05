@@ -67,12 +67,9 @@ const SessionModal: React.FC<SessionModalProps> = ({
         durationMinutesDefault = 30;
     } else if ((sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP') && currentClientId) {
         const client = availableClients.find(c => c.id === currentClientId);
-        const ahType = sessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
-        const need = client?.alliedHealthNeeds.find(n => n.type === ahType);
+        const need = client?.alliedHealthNeeds.find(n => n.sessionType === sessionType);
         if (need && need.startTime && need.endTime) {
             durationMinutesDefault = convertTimeToMinutes(need.endTime) - convertTimeToMinutes(need.startTime);
-        } else if (need && (need.durationMinutes ?? 0) > 0) {
-            durationMinutesDefault = need.durationMinutes!;
         } else {
             durationMinutesDefault = 45;
         }

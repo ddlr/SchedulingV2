@@ -30,6 +30,7 @@ const loadClients = async () => {
   } catch (error) {
     console.error("Error loading clients from Supabase:", error);
     _clients = [];
+    notifyListeners();
   }
 };
 

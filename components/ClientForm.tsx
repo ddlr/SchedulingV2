@@ -24,7 +24,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
 
   const addAlliedHealthNeed = () => {
     const newNeed: AlliedHealthNeed = {
-      type: 'OT',
+      sessionType: 'AlliedHealth_OT',
       startTime: COMPANY_OPERATING_HOURS_START || '09:00',
       endTime: '10:00',
       specificDays: [DayOfWeek.MONDAY]
@@ -133,8 +133,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Service Type</label>
                     <select
-                      value={need.type}
-                      onChange={(e) => handleAlliedHealthChange(index, 'type', e.target.value as AlliedHealthServiceType)}
+                      value={need.sessionType.split('_')[1]}
+                      onChange={(e) => handleAlliedHealthChange(index, 'sessionType', `AlliedHealth_${e.target.value}`)}
                       className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"
                     >
                       {ALL_ALLIED_HEALTH_SERVICES.map(type => <option key={type} value={type}>{type}</option>)}
@@ -149,7 +149,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
                     >
                       <option value="">Any Qualified Staff</option>
                       {therapists
-                        .filter(t => t.canProvideAlliedHealth.includes(need.type))
+                        .filter(t => t.canProvideAlliedHealth.includes(need.sessionType.split('_')[1] as any))
                         .map(t => (
                           <option key={t.id} value={t.id}>{t.name} ({t.role})</option>
                         ))

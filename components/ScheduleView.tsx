@@ -42,13 +42,13 @@ const getSessionTypeStyling = (sessionType: SessionType, clientId: string | null
       return {
         display: 'OT',
         classes: clientColor ? '' : 'bg-emerald-100 border-emerald-200 text-emerald-700',
-        style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(0.9)' } : undefined
+        style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(0.9)', borderStyle: 'dashed', borderWidth: '2px' } : { borderStyle: 'dashed', borderWidth: '2px' }
       };
     case 'AlliedHealth_SLP':
       return {
         display: 'SLP',
         classes: clientColor ? '' : 'bg-violet-100 border-violet-200 text-violet-700',
-        style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(1.1)' } : undefined
+        style: clientColor ? { backgroundColor: clientColor, color: textColor, borderColor: 'rgba(0,0,0,0.1)', filter: 'saturate(0.8) brightness(1.1)', borderStyle: 'dashed', borderWidth: '2px' } : { borderStyle: 'dashed', borderWidth: '2px' }
       };
     case 'IndirectTime': return { display: 'Lunch', classes: 'bg-slate-100 border-slate-200 text-slate-500' };
     default: return { display: sessionType, classes: 'bg-slate-50 border-slate-100 text-slate-400' };
@@ -95,9 +95,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   }
 
   const daySchedule = schedule.filter(entry => entry.day === scheduledDayOfWeek);
+  const unassignedSessions = daySchedule.filter(e => e.therapistId === null);
 
   const teamsData = useMemo(() => {
-    return therapistsToDisplay.reduce((acc, therapist) => {
+    const data = therapistsToDisplay.reduce((acc, therapist) => {
       const teamId = therapist.teamId || 'UnassignedTeam';
       if (!acc[teamId]) {
           const teamInfo = availableTeams.find(t => t.id === teamId);
@@ -111,9 +112,22 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       acc[teamId].therapists.sort((a,b) => a.name.localeCompare(b.name));
       return acc;
     }, {} as Record<string, { therapists: Therapist[]; color?: string; name: string }>);
-  }, [therapistsToDisplay, availableTeams]);
+
+    // Add virtual team for unassigned sessions if they exist
+    if (unassignedSessions.length > 0) {
+        data['PENDING'] = {
+            therapists: [{ id: null as any, name: 'Unassigned', role: 'BT' as any, teamId: 'PENDING', qualifications: [], canProvideAlliedHealth: [] }],
+            color: '#F87171',
+            name: 'Pending Assignment'
+        };
+    }
+
+    return data;
+  }, [therapistsToDisplay, availableTeams, unassignedSessions.length]);
 
   const sortedTeamIds = useMemo(() => Object.keys(teamsData).sort((a, b) => {
+    if (a === 'PENDING') return -1;
+    if (b === 'PENDING') return 1;
     const teamAName = teamsData[a].name;
     const teamBName = teamsData[b].name;
     if (teamAName === 'Unassigned') return 1;
@@ -245,26 +259,37 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                             const durationMinutes = entryEndMinutes - entryStartMinutes;
                             const rowSpan = Math.max(1, Math.ceil(durationMinutes / 15));
                             const styling = getSessionTypeStyling(entryForCell.sessionType, entryForCell.clientId, clients);
+                            const isAlliedHealth = entryForCell.sessionType.startsWith('AlliedHealth_');
+                            const isLocked = isAlliedHealth; // AH sessions are locked as they come from profile
 
                             return (
                                 <td key={entryForCell.id}
-                                    className={`p-1 border-r border-slate-50 text-[10px] relative group transition-all ${canEdit ? 'cursor-move' : ''} ${styling.classes}`}
+                                    className={`p-1 border-r border-slate-50 text-[10px] relative group transition-all ${canEdit && !isLocked ? 'cursor-move' : ''} ${styling.classes}`}
                                     style={styling.style}
                                     rowSpan={rowSpan}
-                                    draggable={canEdit ? "true" : "false"}
-                                    onDragStart={canEdit ? (e) => handleDragStart(e, entryForCell) : undefined}
-                                    onDragEnd={canEdit ? handleDragEnd : undefined}
-                                    onClick={canEdit ? () => onOpenEditSessionModal(entryForCell) : undefined}
-                                    title={canEdit ? `Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}` : `${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
-                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}.`}
+                                    draggable={canEdit && !isLocked ? "true" : "false"}
+                                    onDragStart={canEdit && !isLocked ? (e) => handleDragStart(e, entryForCell) : undefined}
+                                    onDragEnd={canEdit && !isLocked ? handleDragEnd : undefined}
+                                    onClick={canEdit && !isLocked ? () => onOpenEditSessionModal(entryForCell) : undefined}
+                                    title={isLocked ? `Locked: ${entryForCell.clientName} ${styling.display} session` : (canEdit ? `Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}` : `${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`)}
+                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName || 'Unassigned'} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}.`}
                                 >
-                                <div className="flex flex-col h-full bg-white/10 p-1.5 rounded-xl border border-white/20 shadow-sm backdrop-blur-[2px] hover:backdrop-blur-none transition-all">
+                                <div className={`flex flex-col h-full bg-white/10 p-1.5 rounded-xl border border-white/20 shadow-sm backdrop-blur-[2px] hover:backdrop-blur-none transition-all ${isLocked ? 'opacity-90' : ''}`}>
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-bold truncate text-[11px] leading-tight mb-0.5">{entryForCell.clientName || 'N/A'}</div>
+                                    <div className="font-bold truncate text-[11px] leading-tight mb-0.5">
+                                        {entryForCell.clientName || 'N/A'}
+                                        {isLocked && <span className="ml-1 opacity-50">🔒</span>}
+                                    </div>
                                     <div className="flex items-center gap-1 opacity-90 font-black uppercase tracking-tighter text-[8px]">
-                                       <span>{styling.display}</span>
-                                       <span>·</span>
-                                       <span>{to12HourTime(entryForCell.startTime).replace(' ', '')}</span>
+                                       {isAlliedHealth ? (
+                                           <span>{styling.display} ({to12HourTime(entryForCell.startTime).split(' ')[0]}-{to12HourTime(entryForCell.endTime).split(' ')[0]})</span>
+                                       ) : (
+                                           <>
+                                            <span>{styling.display}</span>
+                                            <span>·</span>
+                                            <span>{to12HourTime(entryForCell.startTime).replace(' ', '')}</span>
+                                           </>
+                                       )}
                                     </div>
                                   </div>
                                 </div>

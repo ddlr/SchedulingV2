@@ -215,7 +215,7 @@ export const validateSessionEntry = (
      if (clientId) {
         const clientData = clients.find(c => c.id === clientId);
         if (clientData) {
-            const need = clientData.alliedHealthNeeds.find(n => n.type === serviceType);
+            const need = clientData.alliedHealthNeeds.find(n => n.sessionType === sessionType);
             if (need) {
                 if (need.specificDays && !need.specificDays.includes(day)) {
                     errors.push({

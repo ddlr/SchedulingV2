@@ -14,7 +14,7 @@ import FilterControls from './components/FilterControls';
 import { PlusIcon } from './components/icons/PlusIcon';
 import { TrashIcon } from './components/icons/TrashIcon';
 import { runCsoAlgorithm } from './services/csoService';
-import { validateFullSchedule, timeToMinutes, minutesToTime } from './utils/validationService';
+import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from './utils/validationService';
 import { CalendarIcon } from './components/icons/CalendarIcon';
 import { UserGroupIcon } from './components/icons/UserGroupIcon';
 import { ClockIcon } from './components/icons/ClockIcon';
@@ -60,7 +60,7 @@ const App: React.FC = () => {
   const [baseSchedules, setBaseSchedules] = useState<BaseScheduleConfig[]>(baseScheduleService.getBaseSchedules());
   const [callouts, setCallouts] = useState<Callout[]>(calloutService.getCallouts());
 
-  const [schedule, setSchedule] = useState<GeneratedSchedule | null>(null);
+  const [schedule, setSchedule] = useState<GeneratedSchedule>([]);
   const [loadingState, setLoadingState] = useState<LoadingState>({ active: false, message: 'Processing...' });
   const [error, setError] = useState<ValidationError[] | null>(null);
   const [gaStatusMessage, setGaStatusMessage] = useState<string | null>(null);
@@ -82,6 +82,43 @@ const App: React.FC = () => {
   const [isPublished, setIsPublished] = useState(false);
 
   const getCurrentDateString = () => new Date().toISOString().split('T')[0];
+
+  const getAlliedHealthSessionsForDate = useCallback((date: Date, currentClients: Client[], currentTherapists: Therapist[], currentCallouts: Callout[]): ScheduleEntry[] => {
+    const dayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][date.getDay()];
+    const sessions: ScheduleEntry[] = [];
+
+    currentClients.forEach(client => {
+      if (!client.alliedHealthNeeds) return;
+      client.alliedHealthNeeds.forEach(need => {
+        if (!need.specificDays.includes(dayOfWeek)) return;
+
+        // Check if client is out during this specific need's time
+        const isOutDuringNeed = currentCallouts.some(co =>
+            co.entityType === 'client' &&
+            co.entityId === client.id &&
+            isDateAffectedByCalloutRange(date, co.startDate, co.endDate) &&
+            sessionsOverlap(need.startTime, need.endTime, co.startTime, co.endTime)
+        );
+        if (isOutDuringNeed) return;
+
+        const therapist = need.therapistId ? currentTherapists.find(t => t.id === need.therapistId) : null;
+
+        sessions.push({
+          id: `ah-stub-${client.id}-${need.sessionType}-${need.startTime}`,
+          clientId: client.id,
+          clientName: client.name,
+          therapistId: therapist?.id || null,
+          therapistName: therapist?.name || null,
+          day: dayOfWeek,
+          startTime: need.startTime,
+          endTime: need.endTime,
+          sessionType: need.sessionType
+        });
+      });
+    });
+
+    return sessions;
+  }, []);
 
   const [calloutForm, setCalloutForm] = useState<CalloutFormValues>({
     entityType: 'client',
@@ -147,18 +184,24 @@ const App: React.FC = () => {
       const selectedDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
 
       const loadInitialSchedule = async () => {
-        const ds = await dailyScheduleService.getDailySchedule(dateString);
-        if (ds) {
-          setSchedule(prev => {
-            const otherDays = (prev || []).filter(e => e.day !== selectedDayOfWeek);
-            return [...otherDays, ...ds.schedule_data];
-          });
-          setIsPublished(true);
-          setIsModified(false);
-        } else {
-          if (!canEdit) {
-            setSchedule(prev => (prev || []).filter(e => e.day !== selectedDayOfWeek));
+        try {
+          const ds = await dailyScheduleService.getDailySchedule(dateString);
+          if (ds) {
+            setSchedule(prev => {
+              const otherDays = prev.filter(e => e.day !== selectedDayOfWeek);
+              return [...otherDays, ...ds.schedule_data];
+            });
+            setIsPublished(true);
+            setIsModified(false);
+          } else {
+            setSchedule(prev => prev.filter(e => e.day !== selectedDayOfWeek));
+            setIsPublished(false);
+            setIsModified(false);
           }
+        } catch (err) {
+          console.error("Error loading initial schedule:", err);
+          // Fallback to empty schedule for this day on error
+          setSchedule(prev => prev.filter(e => e.day !== selectedDayOfWeek));
           setIsPublished(false);
           setIsModified(false);
         }
@@ -182,6 +225,58 @@ const App: React.FC = () => {
       return () => unsubscribe();
     }
   }, [selectedDate, canEdit]);
+
+  // Sync Allied Health sessions into the schedule if they are missing
+  useEffect(() => {
+    if (!selectedDate) return;
+    const selectedDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
+    const ahSessions = getAlliedHealthSessionsForDate(selectedDate, clients, therapists, callouts);
+
+    setSchedule(prev => {
+      if (!prev) return null;
+      const otherDays = prev.filter(e => e.day !== selectedDayOfWeek);
+      const currentDay = prev.filter(e => e.day === selectedDayOfWeek);
+
+      const newDay = [...currentDay];
+      let changedLocally = false;
+
+      ahSessions.forEach(ah => {
+        const exists = newDay.some(e =>
+          e.clientId === ah.clientId &&
+          e.sessionType === ah.sessionType &&
+          e.startTime === ah.startTime
+        );
+        if (!exists) {
+          newDay.push(ah);
+          changedLocally = true;
+        }
+      });
+
+      // Also remove AH sessions that are no longer in profile
+      const finalDay = newDay.filter(e => {
+        if (!e.sessionType.startsWith('AlliedHealth_')) return true;
+        const stillValid = ahSessions.some(ah =>
+          e.clientId === ah.clientId &&
+          e.sessionType === ah.sessionType &&
+          e.startTime === ah.startTime &&
+          e.endTime === ah.endTime
+        );
+        if (!stillValid) {
+          changedLocally = true;
+          return false;
+        }
+        return true;
+      });
+
+      if (!changedLocally) return prev;
+
+      // Use setTimeout to avoid setting state during render
+      if (canEdit) {
+        setTimeout(() => setIsModified(true), 0);
+      }
+      return [...otherDays, ...finalDay];
+    });
+  }, [selectedDate, clients, therapists, callouts, getAlliedHealthSessionsForDate, canEdit]);
 
   const handlePublishSchedule = async () => {
     if (!selectedDate || !schedule || !user) return;
@@ -533,7 +628,7 @@ const App: React.FC = () => {
                         });
                         const therapist = therapistName ? therapists.find(t => t.name.toLowerCase() === therapistName.toLowerCase()) : undefined;
                         return {
-                            type,
+                            sessionType: `AlliedHealth_${type}` as any,
                             startTime: start,
                             endTime: end,
                             specificDays,
