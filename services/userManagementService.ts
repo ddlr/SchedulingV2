@@ -35,30 +35,30 @@ export const userManagementService = {
 
   async createUser(input: CreateUserInput): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: input.email,
-        password: input.password,
-      });
-
-      if (authError) {
-        return { success: false, error: authError.message };
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        return { success: false, error: 'Not authenticated' };
       }
 
-      if (!authData.user) {
-        return { success: false, error: 'Failed to create auth user' };
-      }
-
-      const { error: userError } = await supabase
-        .from('users')
-        .insert([{
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           email: input.email,
+          password: input.password,
           full_name: input.full_name,
           role: input.role,
-          is_active: true,
-        }]);
+        }),
+      });
 
-      if (userError) {
-        return { success: false, error: userError.message };
+      const result = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: result.error || 'Failed to create user' };
       }
 
       return { success: true };
