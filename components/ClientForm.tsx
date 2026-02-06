@@ -7,8 +7,26 @@ import { PlusIcon } from './icons/PlusIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
 import { getClientColor } from '../utils/colorUtils';
 
+const migrateAlliedHealthNeeds = (needs: AlliedHealthNeed[]): AlliedHealthNeed[] => {
+  return needs.map(need => {
+    if (!need.specificDays || !need.startTime || !need.endTime) {
+      return {
+        type: need.type,
+        specificDays: [],
+        startTime: '14:00',
+        endTime: '14:30'
+      };
+    }
+    return need;
+  });
+};
+
 const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
-  const [formData, setFormData] = useState<Client>(client);
+  const migratedClient = {
+    ...client,
+    alliedHealthNeeds: migrateAlliedHealthNeeds(client.alliedHealthNeeds)
+  };
+  const [formData, setFormData] = useState<Client>(migratedClient);
 
   const handleInputChange = (field: keyof Client, value: any) => {
     const newFormData = { ...formData, [field]: value };
@@ -24,9 +42,10 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
 
   const toggleAlliedHealthDay = (index: number, day: DayOfWeek) => {
     const need = formData.alliedHealthNeeds[index];
-    const newDays = need.specificDays.includes(day)
-      ? need.specificDays.filter(d => d !== day)
-      : [...need.specificDays, day];
+    const currentDays = need.specificDays || [];
+    const newDays = currentDays.includes(day)
+      ? currentDays.filter(d => d !== day)
+      : [...currentDays, day];
     handleAlliedHealthChange(index, 'specificDays', newDays);
   };
 
@@ -143,12 +162,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select value={need.startTime} onChange={(e) => handleAlliedHealthChange(index, 'startTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                  <select value={need.startTime || ''} onChange={(e) => handleAlliedHealthChange(index, 'startTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
                     <option value="">Start</option>
                     {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-start-${index}-${time}`} value={time}>{time}</option>)}
                   </select>
                   <span className="text-slate-400">—</span>
-                  <select value={need.endTime} onChange={(e) => handleAlliedHealthChange(index, 'endTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                  <select value={need.endTime || ''} onChange={(e) => handleAlliedHealthChange(index, 'endTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
                     <option value="">End</option>
                     {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-end-${index}-${time}`} value={time}>{time}</option>)}
                   </select>
@@ -166,7 +185,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
                       type="button"
                       onClick={() => toggleAlliedHealthDay(index, day)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                        need.specificDays.includes(day)
+                        (need.specificDays || []).includes(day)
                           ? 'bg-brand-blue text-white shadow-sm'
                           : 'bg-white text-slate-500 border border-slate-100 hover:border-slate-200'
                       }`}
