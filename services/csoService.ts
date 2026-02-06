@@ -222,7 +222,7 @@ export class FastScheduler {
 
         const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
 
-        // Pass 2: Allied Health (Create unassigned sessions at exact times from client profiles)
+        // Pass 2: Allied Health (Attempt to assign therapists to Allied Health sessions)
         shuffledC.forEach(target => {
             target.c.alliedHealthNeeds.forEach(need => {
                 if (!need.specificDays || !need.specificDays.includes(this.day)) return;
@@ -241,10 +241,38 @@ export class FastScheduler {
                 if (len * SLOT_SIZE > maxD) return;
 
                 const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
+                const serviceRole = need.type; // 'OT' or 'SLP'
 
                 if (tracker.isCFree(target.ci, s, len)) {
-                    schedule.push(this.entUnassigned(target.ci, s, len, type));
-                    tracker.book(-1, target.ci, s, len);
+                    let selectedTi = -1;
+
+                    // 1. Try preferred provider if they match the role and are free
+                    if (need.preferredProviderId) {
+                        const ti = this.therapists.findIndex(t => t.id === need.preferredProviderId);
+                        if (ti >= 0 && this.therapists[ti].role === serviceRole && tracker.isTFree(ti, s, len)) {
+                            selectedTi = ti;
+                        }
+                    }
+
+                    // 2. Try any other free therapist with the matching role
+                    if (selectedTi === -1) {
+                        const eligible = this.therapists.map((t, ti) => ({t, ti}))
+                            .filter(x => x.t.role === serviceRole && tracker.isTFree(x.ti, s, len))
+                            .sort(() => Math.random() - 0.5);
+                        if (eligible.length > 0) {
+                            selectedTi = eligible[0].ti;
+                        }
+                    }
+
+                    if (selectedTi !== -1) {
+                        schedule.push(this.ent(target.ci, selectedTi, s, len, type));
+                        tracker.book(selectedTi, target.ci, s, len);
+                        tSessionCount[selectedTi]++;
+                    } else {
+                        // Fallback: keep unassigned if no eligible therapist is available
+                        schedule.push(this.entUnassigned(target.ci, s, len, type));
+                        tracker.book(-1, target.ci, s, len);
+                    }
                     clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                 }
             });

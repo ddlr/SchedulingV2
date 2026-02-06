@@ -22,6 +22,7 @@ import { ClockIcon } from './components/icons/ClockIcon';
 import { ClipboardDocumentListIcon } from './components/icons/ClipboardDocumentListIcon';
 import { Cog8ToothIcon } from './components/icons/Cog8ToothIcon';
 import { SparklesIcon } from './components/icons/SparklesIcon';
+import { ChevronDownIcon } from './components/icons/ChevronDownIcon';
 import ScheduleRatingPanel from './components/ScheduleRatingPanel';
 import { useAuth } from './contexts/AuthContext';
 
@@ -76,6 +77,8 @@ const App: React.FC = () => {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedTherapistIds, setSelectedTherapistIds] = useState<string[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+
+  const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
 
   const [bulkOperationSummary, setBulkOperationSummary] = useState<BulkOperationSummary | null>(null);
 
@@ -467,6 +470,32 @@ const App: React.FC = () => {
   const handleClientFilterChange = (ids: string[]) => setSelectedClientIds(ids);
   const handleClearFilters = () => { setSelectedTeamIds([]); setSelectedTherapistIds([]); setSelectedClientIds([]); };
 
+  const toggleTeamExpansion = (teamId: string) => {
+    setExpandedTeams(prev => ({
+      ...prev,
+      [teamId]: !prev[teamId]
+    }));
+  };
+
+  const expandAllTeams = (targetTeams: Team[], type: 'client' | 'therapist') => {
+    const newExpansion = { ...expandedTeams };
+    targetTeams.forEach(t => {
+        newExpansion[`${type}-${t.id}`] = true;
+    });
+    newExpansion[`${type}-unassigned`] = true;
+    setExpandedTeams(newExpansion);
+  };
+
+  const collapseAllTeams = (type: 'client' | 'therapist') => {
+    const newExpansion = { ...expandedTeams };
+    Object.keys(newExpansion).forEach(key => {
+        if (key.startsWith(`${type}-`)) {
+            newExpansion[key] = false;
+        }
+    });
+    setExpandedTeams(newExpansion);
+  };
+
   const displayedTherapists = useMemo(() => {
     let result = [...therapists];
     if (selectedTeamIds.length > 0) {
@@ -484,9 +513,13 @@ const App: React.FC = () => {
     const visibleTherapistIds = new Set(displayedTherapists.map(t => t.id));
 
     let filteredEntries = schedule.filter(entry => {
-        if (!visibleTherapistIds.has(entry.therapistId)) {
+        // Show unassigned sessions OR those whose therapist is in the visible list
+        const matchesStaffFilter = entry.therapistId === null || visibleTherapistIds.has(entry.therapistId);
+
+        if (!matchesStaffFilter) {
             return false;
         }
+
         if (selectedClientIds.length > 0) {
             if (entry.clientId === null) return true;
             return selectedClientIds.includes(entry.clientId);
@@ -684,45 +717,77 @@ const App: React.FC = () => {
 
             {activeTab === 'clients' && (
               <div>
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Clients</h2>
-                  {canEdit && (
-                    <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                      <PlusIcon className="w-4 h-4" />
-                      <span>Add Client</span>
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-full mr-2">
+                        <button onClick={() => expandAllTeams(availableTeams, 'client')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Expand All</button>
+                        <div className="w-px h-4 bg-slate-200 self-center"></div>
+                        <button onClick={() => collapseAllTeams('client')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Collapse All</button>
+                    </div>
+                    {canEdit && (
+                        <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                        <PlusIcon className="w-4 h-4" />
+                        <span>Add Client</span>
+                        </button>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-12">
+                <div className="space-y-6">
                   {availableTeams.map(team => {
                     const teamClients = clients.filter(c => c.teamId === team.id).sort((a, b) => a.name.localeCompare(b.name));
                     if (teamClients.length === 0) return null;
+                    const isExpanded = expandedTeams[`client-${team.id}`];
                     return (
-                      <div key={team.id} className="space-y-6">
-                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
-                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
-                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamClients.length}</span>
-                        </div>
-                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                          {teamClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
-                        </div>
+                      <div key={team.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                        <button
+                            onClick={() => toggleTeamExpansion(`client-${team.id}`)}
+                            className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                                <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                                <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamClients.length}</span>
+                            </div>
+                            <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                            <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                    {teamClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                                </div>
+                            </div>
+                        )}
                       </div>
                     );
                   })}
 
-                  {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length > 0 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
-                        <h3 className="text-lg font-serif text-slate-700">Unassigned Clients</h3>
-                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length}</span>
-                      </div>
-                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                        {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name)).map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
-                      </div>
-                    </div>
-                  )}
+                  {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length > 0 && (() => {
+                    const unassignedClients = clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name));
+                    const isExpanded = expandedTeams[`client-unassigned`];
+                    return (
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                            <button
+                                onClick={() => toggleTeamExpansion(`client-unassigned`)}
+                                className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-1.5 h-6 rounded-full bg-slate-300"></div>
+                                    <h3 className="text-lg font-serif text-slate-700">Unassigned Clients</h3>
+                                    <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{unassignedClients.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isExpanded && (
+                                <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                    <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                        {unassignedClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                  })()}
 
                   {clients.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
@@ -734,45 +799,77 @@ const App: React.FC = () => {
             )}
             {activeTab === 'therapists' && (
               <div>
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Staff</h2>
-                  {canEdit && (
-                    <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                      <PlusIcon className="w-4 h-4" />
-                      <span>Add Staff Member</span>
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-full mr-2">
+                        <button onClick={() => expandAllTeams(availableTeams, 'therapist')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Expand All</button>
+                        <div className="w-px h-4 bg-slate-200 self-center"></div>
+                        <button onClick={() => collapseAllTeams('therapist')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Collapse All</button>
+                    </div>
+                    {canEdit && (
+                        <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                        <PlusIcon className="w-4 h-4" />
+                        <span>Add Staff Member</span>
+                        </button>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-12">
+                <div className="space-y-6">
                   {availableTeams.map(team => {
                     const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
                     if (teamTherapists.length === 0) return null;
+                    const isExpanded = expandedTeams[`therapist-${team.id}`];
                     return (
-                      <div key={team.id} className="space-y-6">
-                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
-                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
-                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamTherapists.length}</span>
-                        </div>
-                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                          {teamTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
-                        </div>
+                      <div key={team.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                        <button
+                            onClick={() => toggleTeamExpansion(`therapist-${team.id}`)}
+                            className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                                <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                                <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamTherapists.length}</span>
+                            </div>
+                            <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                            <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                    {teamTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                                </div>
+                            </div>
+                        )}
                       </div>
                     );
                   })}
 
-                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length > 0 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
-                        <h3 className="text-lg font-serif text-slate-700">Unassigned Staff</h3>
-                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length}</span>
-                      </div>
-                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                        {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
-                      </div>
-                    </div>
-                  )}
+                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length > 0 && (() => {
+                    const unassignedTherapists = therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically);
+                    const isExpanded = expandedTeams[`therapist-unassigned`];
+                    return (
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                            <button
+                                onClick={() => toggleTeamExpansion(`therapist-unassigned`)}
+                                className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-1.5 h-6 rounded-full bg-slate-300"></div>
+                                    <h3 className="text-lg font-serif text-slate-700">Unassigned Staff</h3>
+                                    <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{unassignedTherapists.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isExpanded && (
+                                <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                    <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                        {unassignedTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                  })()}
 
                   {therapists.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">

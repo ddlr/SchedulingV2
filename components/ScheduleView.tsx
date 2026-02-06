@@ -98,7 +98,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   const daySchedule = schedule.filter(entry => entry.day === scheduledDayOfWeek);
 
   const teamsData = useMemo(() => {
-    return therapistsToDisplay.reduce((acc, therapist) => {
+    const data = therapistsToDisplay.reduce((acc, therapist) => {
       const teamId = therapist.teamId || 'UnassignedTeam';
       if (!acc[teamId]) {
           const teamInfo = availableTeams.find(t => t.id === teamId);
@@ -112,7 +112,19 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
       acc[teamId].therapists.sort(sortStaffHierarchically);
       return acc;
     }, {} as Record<string, { therapists: Therapist[]; color?: string; name: string }>);
-  }, [therapistsToDisplay, availableTeams]);
+
+    // Add a virtual "Unassigned" column if there are sessions without a therapist
+    const hasUnassignedSessions = daySchedule.some(entry => entry.therapistId === null);
+    if (hasUnassignedSessions) {
+        data['UnassignedColumn'] = {
+            therapists: [{ id: 'null-staff', name: 'Unassigned', role: 'Other', qualifications: [] }],
+            color: '#CBD5E1',
+            name: 'Unassigned Staff'
+        };
+    }
+
+    return data;
+  }, [therapistsToDisplay, availableTeams, daySchedule]);
 
   const sortedTeamIds = useMemo(() => Object.keys(teamsData).sort((a, b) => {
     const teamAName = teamsData[a].name;
@@ -236,7 +248,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                    {sortedTeamIds.map(teamId => (
                     teamsData[teamId].therapists.map(therapist => {
                         const entryForCell = daySchedule.find(entry =>
-                        entry.therapistId === therapist.id &&
+                        (entry.therapistId === therapist.id || (entry.therapistId === null && therapist.id === 'null-staff')) &&
                         timeToMinutes(entry.startTime) === currentTimeSlotStartMinutes
                         );
 
@@ -274,7 +286,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                         }
 
                         const isCoveredByPrior = daySchedule.some(entry =>
-                            entry.therapistId === therapist.id &&
+                            (entry.therapistId === therapist.id || (entry.therapistId === null && therapist.id === 'null-staff')) &&
                             timeToMinutes(entry.startTime) < currentTimeSlotStartMinutes &&
                             timeToMinutes(entry.endTime) > currentTimeSlotStartMinutes
                         );
