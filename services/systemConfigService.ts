@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: SystemConfig = {
     '#FBBF24', '#34D399', '#60A5FA', '#F472B6',
     '#A78BFA', '#2DD4BF', '#F0ABFC', '#FCA5A5'
   ],
-  allTherapistRoles: ["BCBA", "CF", "STAR 3", "STAR 2", "STAR 1", "RBT", "BT", "Other"],
+  allTherapistRoles: ["BCBA", "CF", "STAR 3", "STAR 2", "STAR 1", "RBT", "BT", "OT", "SLP", "Other"],
   defaultRoleRank: {
     "BCBA": 6,
     "CF": 5,
@@ -41,6 +41,8 @@ const DEFAULT_CONFIG: SystemConfig = {
     "STAR 1": 2,
     "RBT": 1,
     "BT": 0,
+    "OT": -1,
+    "SLP": -1,
     "Other": -1
   },
   allAlliedHealthServices: ["OT", "SLP"],

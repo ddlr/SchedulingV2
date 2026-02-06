@@ -240,11 +240,8 @@ export class FastScheduler {
                     if (tracker.isCFree(target.ci, s, len)) {
                         const possibleT = this.therapists.map((t, ti) => ({t, ti}))
                             .filter(x => {
-                                if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
-                                const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
-                                if (!x.t.qualifications.includes(reqQual)) return false;
+                                if (x.t.role !== need.type) return false;
                                 if (!tracker.isTFree(x.ti, s, len)) return false;
-                                // Insurance provider limit check
                                 const maxP = this.getMaxProviders(target.c);
                                 if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(x.ti)) return false;
                                 return true;
@@ -264,12 +261,12 @@ export class FastScheduler {
         });
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
-                    // Find a therapist for this client starting at slot s
-                    const quals = sortedTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;

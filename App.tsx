@@ -124,7 +124,7 @@ const App: React.FC = () => {
   const handleAddClient = () => { setError(null); clientService.addClient({ name: 'New Client', teamId: '', insuranceRequirements: [], alliedHealthNeeds: [] }); };
   const handleUpdateClient = (updatedClient: Client) => clientService.updateClient(updatedClient);
   const handleRemoveClient = (clientId: string) => clientService.removeClient(clientId);
-  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', role: 'BT', teamId: '', qualifications: [], canProvideAlliedHealth: [] }); };
+  const handleAddTherapist = () => { setError(null); therapistService.addTherapist({ name: 'New Therapist', role: 'BT', teamId: '', qualifications: [] }); };
   const handleUpdateTherapist = (updatedTherapist: Therapist) => therapistService.updateTherapist(updatedTherapist);
   const handleRemoveTherapist = (therapistId: string) => therapistService.removeTherapist(therapistId);
   const handleUpdateTeams = (updatedTeams: Team[]) => teamService.updateTeams(updatedTeams);
@@ -563,12 +563,10 @@ const App: React.FC = () => {
                 const therapistTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
                 let qualifications: string[] | undefined = rowData.qualifications !== undefined ? (rowData.qualifications ? rowData.qualifications.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
                 if(qualifications) qualifications.forEach(q => newQualificationsFound.add(q));
-                let canProvideAH: AlliedHealthNeed['type'][] | undefined = rowData.canprovidealliedhealth !== undefined ? (rowData.canprovidealliedhealth ? rowData.canprovidealliedhealth.split(';').map(s => s.trim().toUpperCase() as AlliedHealthNeed['type']).filter(s => s === 'OT' || s === 'SLP') : []) : undefined;
                 const partialTherapist: Partial<Therapist> = { name: rowData.name };
                 if (rowData.role) partialTherapist.role = rowData.role as TherapistRole;
                 if (therapistTeam !== undefined || rowData.teamname !== undefined) partialTherapist.teamId = therapistTeam?.id;
                 if (qualifications !== undefined) partialTherapist.qualifications = qualifications;
-                if (canProvideAH !== undefined) partialTherapist.canProvideAlliedHealth = canProvideAH;
                 therapistsToProcess.push(partialTherapist);
             } else if (rowData.action.toUpperCase() === 'REMOVE' && action === 'REMOVE') therapistNamesToRemove.push(rowData.name);
         }

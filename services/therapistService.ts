@@ -22,8 +22,7 @@ const loadTherapists = async () => {
       name: row.name,
       role: row.role || "BT",
       teamId: row.team_id || undefined,
-      qualifications: row.qualifications || [],
-      canProvideAlliedHealth: row.can_provide_allied_health || []
+      qualifications: row.qualifications || []
     }));
 
     notifyListeners();
@@ -58,8 +57,7 @@ export const addTherapist = async (newTherapistData: Omit<Therapist, 'id'>): Pro
         name: newTherapistData.name,
         role: newTherapistData.role,
         team_id: newTherapistData.teamId || null,
-        qualifications: newTherapistData.qualifications || [],
-        can_provide_allied_health: newTherapistData.canProvideAlliedHealth || []
+        qualifications: newTherapistData.qualifications || []
       })
       .select()
       .single();
@@ -71,8 +69,7 @@ export const addTherapist = async (newTherapistData: Omit<Therapist, 'id'>): Pro
       name: data.name,
       role: data.role,
       teamId: data.team_id || undefined,
-      qualifications: data.qualifications || [],
-      canProvideAlliedHealth: data.can_provide_allied_health || []
+      qualifications: data.qualifications || []
     };
 
     await loadTherapists();
@@ -92,7 +89,6 @@ export const updateTherapist = async (updatedTherapist: Therapist): Promise<Ther
         role: updatedTherapist.role,
         team_id: updatedTherapist.teamId || null,
         qualifications: updatedTherapist.qualifications,
-        can_provide_allied_health: updatedTherapist.canProvideAlliedHealth,
         updated_at: new Date().toISOString()
       })
       .eq('id', updatedTherapist.id);
@@ -124,7 +120,7 @@ export const removeTherapist = async (therapistId: string): Promise<boolean> => 
   }
 };
 
-export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Omit<Therapist, 'canCoverIndirect'>>[]): Promise<{ addedCount: number; updatedCount: number }> => {
+export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Therapist>[]): Promise<{ addedCount: number; updatedCount: number }> => {
   let addedCount = 0;
   let updatedCount = 0;
 
@@ -143,7 +139,6 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Omi
         if (therapistData.role !== undefined) updateData.role = therapistData.role;
         if (therapistData.teamId !== undefined) updateData.team_id = therapistData.teamId || null;
         if (therapistData.qualifications !== undefined) updateData.qualifications = therapistData.qualifications;
-        if (therapistData.canProvideAlliedHealth !== undefined) updateData.can_provide_allied_health = therapistData.canProvideAlliedHealth;
 
         await supabase
           .from('therapists')
@@ -158,8 +153,7 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Omi
             name: therapistData.name,
             role: therapistData.role || "BT",
             team_id: therapistData.teamId || null,
-            qualifications: therapistData.qualifications || [],
-            can_provide_allied_health: therapistData.canProvideAlliedHealth || []
+            qualifications: therapistData.qualifications || []
           });
 
         addedCount++;

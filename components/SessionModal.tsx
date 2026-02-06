@@ -45,6 +45,12 @@ const SessionModal: React.FC<SessionModalProps> = ({
     return [...availableTeams].sort((a, b) => a.name.localeCompare(b.name));
   }, [availableTeams]);
 
+  const filteredTherapists = useMemo(() => {
+    if (formData.sessionType === 'AlliedHealth_OT') return therapists.filter(t => t.role === 'OT');
+    if (formData.sessionType === 'AlliedHealth_SLP') return therapists.filter(t => t.role === 'SLP');
+    return therapists;
+  }, [therapists, formData.sessionType]);
+
   // Filter time slots to only show those within operating hours
   const visibleTimeSlots = useMemo(() => {
     const opStart = convertTimeToMinutes(COMPANY_OPERATING_HOURS_START);
@@ -164,6 +170,14 @@ const SessionModal: React.FC<SessionModalProps> = ({
         } else if (newFormData.clientId === null && clients.length > 0) {
              newFormData.clientId = clients[0].id;
              newFormData.clientName = clients[0].name;
+        }
+        if (newSessionType === 'AlliedHealth_OT' || newSessionType === 'AlliedHealth_SLP') {
+            const requiredRole = newSessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
+            const currentTherapist = therapists.find(t => t.id === newFormData.therapistId);
+            if (!currentTherapist || currentTherapist.role !== requiredRole) {
+                newFormData.therapistId = '';
+                newFormData.therapistName = '';
+            }
         }
         newFormData.endTime = calculateDefaultEndTime(newFormData.startTime, newSessionType, newFormData.clientId, clients);
     }
@@ -301,7 +315,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
             >
               <option value="">Select Staff...</option>
               {sortedTeams.map(team => {
-                const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
+                const teamTherapists = filteredTherapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
                 if (teamTherapists.length === 0) return null;
                 return (
                   <optgroup key={team.id} label={`${team.name} Team`}>
@@ -309,9 +323,9 @@ const SessionModal: React.FC<SessionModalProps> = ({
                   </optgroup>
                 );
               })}
-              {therapists.some(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)) && (
+              {filteredTherapists.some(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)) && (
                 <optgroup label="Unassigned">
-                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
+                  {filteredTherapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
                 </optgroup>
               )}
             </select>

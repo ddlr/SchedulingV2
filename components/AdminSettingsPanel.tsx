@@ -79,8 +79,6 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
       <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Staff member's full name. Must be unique for reliable <code>REMOVE</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Assignment logic similar to clients.</li>
       <li><strong>qualifications:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "RBT;CPR Certified"). New qualifications added to Settings.</li>
-      <li><strong>canCoverIndirect:</strong> (Optional for <code>ADD_UPDATE</code>) <code>TRUE</code> or <code>FALSE</code>.</li>
-      <li><strong>canProvideAlliedHealth:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list of allied health service types (e.g., "OT;SLP").</li>
     </ul>
     <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a staff member with 'name' exists, they are updated. Otherwise, a new one is created.</p>
     <p class="text-xs">For <code>REMOVE</code>, staff member with matching 'name' is removed.</p>

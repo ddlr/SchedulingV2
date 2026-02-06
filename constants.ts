@@ -1,4 +1,4 @@
-import { DayOfWeek, TherapistRole, AlliedHealthServiceType } from './types';
+import { DayOfWeek } from './types';
 import { getSystemConfig } from './services/systemConfigService';
 
 let _cachedConfig = getSystemConfig();

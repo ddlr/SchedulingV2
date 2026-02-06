@@ -1,5 +1,5 @@
 
-import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, AlliedHealthServiceType, ValidationError, Callout, InsuranceQualification, TherapistRole } from '../types';
+import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, ValidationError, Callout, InsuranceQualification } from '../types';
 import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
 
 export const timeToMinutes = (time: string): number => {
@@ -191,21 +191,13 @@ export const validateSessionEntry = (
 
   if (sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP') {
     const serviceType = sessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
-    if (therapistData && !therapistData.canProvideAlliedHealth.includes(serviceType)) {
+    if (therapistData && therapistData.role !== serviceType) {
       errors.push({
           ruleId: "ALLIED_HEALTH_QUALIFICATION_MISSING",
-          message: `Therapist ${therapistName} cannot provide ${serviceType} services.`,
+          message: `Therapist ${therapistName} (${therapistData.role}) is not an ${serviceType} provider. Only staff with the ${serviceType} role can provide ${serviceType} services.`,
           details: { entryId: entryToValidate.id }
       });
     }
-    const requiredQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified"; 
-     if (therapistData && !therapistData.qualifications.includes(requiredQual)) {
-        errors.push({
-          ruleId: "ALLIED_HEALTH_CERTIFICATION_MISSING",
-          message: `Therapist ${therapistName} lacks qualification "${requiredQual}" for ${serviceType}.`,
-          details: { entryId: entryToValidate.id }
-      });
-     }
   }
 
   const duration = endTimeMinutes - startTimeMinutes;
