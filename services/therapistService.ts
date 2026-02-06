@@ -51,9 +51,11 @@ export const getTherapists = (): Therapist[] => {
 
 export const addTherapist = async (newTherapistData: Omit<Therapist, 'id'>): Promise<Therapist> => {
   try {
+    const newId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('therapists')
       .insert({
+        id: newId,
         name: newTherapistData.name,
         role: newTherapistData.role,
         team_id: newTherapistData.teamId || null,

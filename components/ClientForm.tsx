@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Client, ClientFormProps, AlliedHealthNeed, AlliedHealthServiceType, DayOfWeek } from '../types';
-import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, DAYS_OF_WEEK } from '../constants';
+import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, DAYS_OF_WEEK, formatTimeTo12Hour } from '../constants';
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
@@ -164,12 +164,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTe
                 <div className="flex items-center gap-2">
                   <select value={need.startTime || ''} onChange={(e) => handleAlliedHealthChange(index, 'startTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
                     <option value="">Start</option>
-                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-start-${index}-${time}`} value={time}>{time}</option>)}
+                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-start-${index}-${time}`} value={time}>{formatTimeTo12Hour(time)}</option>)}
                   </select>
                   <span className="text-slate-400">—</span>
                   <select value={need.endTime || ''} onChange={(e) => handleAlliedHealthChange(index, 'endTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
                     <option value="">End</option>
-                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-end-${index}-${time}`} value={time}>{time}</option>)}
+                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-end-${index}-${time}`} value={time}>{formatTimeTo12Hour(time)}</option>)}
                   </select>
                 </div>
                 <button onClick={() => removeAlliedHealthNeed(index)} className="flex-shrink-0 text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl" aria-label="Remove Allied Health Need">
