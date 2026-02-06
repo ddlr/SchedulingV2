@@ -21,7 +21,7 @@ const migrateAlliedHealthNeeds = (needs: AlliedHealthNeed[]): AlliedHealthNeed[]
   });
 };
 
-const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
+const ClientForm: React.FC<ClientFormProps> = ({ client, therapists, availableTeams, availableInsuranceQualifications, onUpdate, onRemove }) => {
   const migratedClient = {
     ...client,
     alliedHealthNeeds: migrateAlliedHealthNeeds(client.alliedHealthNeeds)
@@ -194,6 +194,25 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
                     </button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Preferred Provider</p>
+                <select
+                  value={need.preferredProviderId || ''}
+                  onChange={(e) => handleAlliedHealthChange(index, 'preferredProviderId', e.target.value || undefined)}
+                  className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                >
+                  <option value="">None (Any {need.type} Provider)</option>
+                  {therapists
+                    .filter(t => t.role === need.type)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(therapist => (
+                      <option key={therapist.id} value={therapist.id}>
+                        {therapist.name}
+                      </option>
+                    ))
+                  }
+                </select>
               </div>
             </div>
           ))}

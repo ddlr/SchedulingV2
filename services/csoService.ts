@@ -248,7 +248,12 @@ export class FastScheduler {
                             if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(x.ti)) return false;
                             return true;
                         })
-                        .sort((a, b) => this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role));
+                        .sort((a, b) => {
+                            const aIsPreferred = need.preferredProviderId && a.t.id === need.preferredProviderId ? 0 : 1;
+                            const bIsPreferred = need.preferredProviderId && b.t.id === need.preferredProviderId ? 0 : 1;
+                            if (aIsPreferred !== bIsPreferred) return aIsPreferred - bIsPreferred;
+                            return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
+                        });
                     if (possibleT.length > 0) {
                         const q = possibleT[0];
                         schedule.push(this.ent(target.ci, q.ti, s, len, type));

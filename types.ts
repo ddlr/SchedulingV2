@@ -25,6 +25,7 @@ export interface AlliedHealthNeed {
   specificDays: DayOfWeek[];
   startTime: string;
   endTime: string;
+  preferredProviderId?: string;
 }
 
 export interface InsuranceQualification {
