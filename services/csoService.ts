@@ -32,8 +32,11 @@ class BitTracker {
     }
     public book(ti: number, ci: number, s: number, l: number) {
         const m = ((1n << BigInt(l)) - 1n) << BigInt(s);
-        this.tBusy[ti] |= m;
-        if (ci >= 0) { this.cBusy[ci] |= m; this.cT[ci].add(ti); }
+        if (ti >= 0) { this.tBusy[ti] |= m; }
+        if (ci >= 0) {
+            this.cBusy[ci] |= m;
+            if (ti >= 0) { this.cT[ci].add(ti); }
+        }
     }
 }
 
