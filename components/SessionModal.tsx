@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { SessionModalProps, ScheduleEntry, DayOfWeek, SessionType, Client, ValidationError } from '../types';
+import { SessionModalProps, ScheduleEntry, DayOfWeek, SessionType, Client, ValidationError, Therapist, Team } from '../types';
 import { XMarkIcon } from './icons/XMarkIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { TIME_SLOTS_H_MM, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
 import { timeToMinutes as convertTimeToMinutes, to12HourTime } from '../utils/validationService';
+import { sortStaffHierarchically } from '../utils/staffUtils';
 
 const ensureScheduleEntryId = (id?: string) => id || `schedEntry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -17,6 +18,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
   newSessionSlot,
   clients,
   therapists,
+  availableTeams,
   insuranceQualifications,
   availableSessionTypes,
   timeSlots: allTimeSlots,
@@ -38,6 +40,10 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
   const [formData, setFormData] = useState<ScheduleEntry>(initialFormState);
   const [formError, setFormError] = useState<ValidationError[] | null>(null);
+
+  const sortedTeams = useMemo(() => {
+    return [...availableTeams].sort((a, b) => a.name.localeCompare(b.name));
+  }, [availableTeams]);
 
   // Filter time slots to only show those within operating hours
   const visibleTimeSlots = useMemo(() => {
@@ -294,7 +300,20 @@ const SessionModal: React.FC<SessionModalProps> = ({
               required
             >
               <option value="">Select Staff...</option>
-              {therapists.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {sortedTeams.map(team => {
+                const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
+                if (teamTherapists.length === 0) return null;
+                return (
+                  <optgroup key={team.id} label={`${team.name} Team`}>
+                    {teamTherapists.map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
+                  </optgroup>
+                );
+              })}
+              {therapists.some(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)) && (
+                <optgroup label="Unassigned">
+                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -309,7 +328,20 @@ const SessionModal: React.FC<SessionModalProps> = ({
               aria-disabled={formData.sessionType === 'IndirectTime'}
             >
               <option value="">N/A (Lunch)</option>
-              {clients.sort((a,b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {sortedTeams.map(team => {
+                const teamClients = clients.filter(c => c.teamId === team.id).sort((a, b) => a.name.localeCompare(b.name));
+                if (teamClients.length === 0) return null;
+                return (
+                  <optgroup key={team.id} label={`${team.name} Team`}>
+                    {teamClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                );
+              })}
+              {clients.some(c => !c.teamId || !availableTeams.find(team => team.id === c.teamId)) && (
+                <optgroup label="Unassigned">
+                  {clients.filter(c => !c.teamId || !availableTeams.find(team => team.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              )}
             </select>
           </div>
 

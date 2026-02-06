@@ -130,6 +130,7 @@ export interface SessionModalProps {
   newSessionSlot: { therapistId: string; therapistName: string; startTime: string; day: DayOfWeek } | null; // If adding new
   clients: Client[];
   therapists: Therapist[];
+  availableTeams: Team[];
   insuranceQualifications: InsuranceQualification[];
   availableSessionTypes: string[];
   timeSlots: string[];
