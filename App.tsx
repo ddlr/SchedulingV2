@@ -22,8 +22,10 @@ import { ClockIcon } from './components/icons/ClockIcon';
 import { ClipboardDocumentListIcon } from './components/icons/ClipboardDocumentListIcon';
 import { Cog8ToothIcon } from './components/icons/Cog8ToothIcon';
 import { SparklesIcon } from './components/icons/SparklesIcon';
+import { ChevronDownIcon } from './components/icons/ChevronDownIcon';
 import ScheduleRatingPanel from './components/ScheduleRatingPanel';
 import { useAuth } from './contexts/AuthContext';
+import * as XLSX from 'xlsx';
 
 import * as clientService from './services/clientService';
 import * as therapistService from './services/therapistService';
@@ -76,6 +78,8 @@ const App: React.FC = () => {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedTherapistIds, setSelectedTherapistIds] = useState<string[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+
+  const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
 
   const [bulkOperationSummary, setBulkOperationSummary] = useState<BulkOperationSummary | null>(null);
 
@@ -467,6 +471,32 @@ const App: React.FC = () => {
   const handleClientFilterChange = (ids: string[]) => setSelectedClientIds(ids);
   const handleClearFilters = () => { setSelectedTeamIds([]); setSelectedTherapistIds([]); setSelectedClientIds([]); };
 
+  const toggleTeamExpansion = (teamId: string) => {
+    setExpandedTeams(prev => ({
+      ...prev,
+      [teamId]: !prev[teamId]
+    }));
+  };
+
+  const expandAllTeams = (targetTeams: Team[], type: 'client' | 'therapist') => {
+    const newExpansion = { ...expandedTeams };
+    targetTeams.forEach(t => {
+        newExpansion[`${type}-${t.id}`] = true;
+    });
+    newExpansion[`${type}-unassigned`] = true;
+    setExpandedTeams(newExpansion);
+  };
+
+  const collapseAllTeams = (type: 'client' | 'therapist') => {
+    const newExpansion = { ...expandedTeams };
+    Object.keys(newExpansion).forEach(key => {
+        if (key.startsWith(`${type}-`)) {
+            newExpansion[key] = false;
+        }
+    });
+    setExpandedTeams(newExpansion);
+  };
+
   const displayedTherapists = useMemo(() => {
     let result = [...therapists];
     if (selectedTeamIds.length > 0) {
@@ -484,9 +514,13 @@ const App: React.FC = () => {
     const visibleTherapistIds = new Set(displayedTherapists.map(t => t.id));
 
     let filteredEntries = schedule.filter(entry => {
-        if (!visibleTherapistIds.has(entry.therapistId)) {
+        // Show unassigned sessions OR those whose therapist is in the visible list
+        const matchesStaffFilter = entry.therapistId === null || visibleTherapistIds.has(entry.therapistId);
+
+        if (!matchesStaffFilter) {
             return false;
         }
+
         if (selectedClientIds.length > 0) {
             if (entry.clientId === null) return true;
             return selectedClientIds.includes(entry.clientId);
@@ -499,36 +533,86 @@ const App: React.FC = () => {
 
 
   const handleBulkUpdateClients = async (file: File, action: 'ADD_UPDATE' | 'REMOVE'): Promise<BulkOperationSummary> => {
-    setLoadingState({active: true, message: "Processing client CSV..."}); setBulkOperationSummary(null); setError(null);
+    setLoadingState({active: true, message: "Processing client file..."}); setBulkOperationSummary(null); setError(null);
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { insuranceRequirements: [] }};
     try {
-        const text = await file.text();
-        const rows = text.split('\n').map(row => row.trim()).filter(row => row);
-        if (rows.length <= 1) throw new Error("CSV file is empty or has only a header row.");
-        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-        summary.processedRows = rows.length - 1;
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
+
+        summary.processedRows = jsonData.length;
         const clientsToProcess: Partial<Client>[] = [];
         const clientNamesToRemove: string[] = [];
         const newInsuranceRequirementsFound = new Set<string>();
-        for (let i = 1; i < rows.length; i++) {
-            const values = rows[i].split(',');
-            const rowData: Record<string, string> = headers.reduce((obj, header, index) => { obj[header] = values[index]?.trim() || ''; return obj; }, {} as Record<string, string>);
-            if (!rowData.action || (rowData.action.toUpperCase() !== 'ADD_UPDATE' && rowData.action.toUpperCase() !== 'REMOVE')) { summary.errors.push({ rowNumber: i + 1, message: "Missing or invalid ACTION column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (!rowData.name) { summary.errors.push({ rowNumber: i + 1, message: "Missing 'name' column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (rowData.action.toUpperCase() === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
-                const clientTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
-                let insuranceReqs: string[] | undefined = rowData.insurancerequirements !== undefined ? (rowData.insurancerequirements ? rowData.insurancerequirements.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
-                if(insuranceReqs) insuranceReqs.forEach(req => newInsuranceRequirementsFound.add(req));
-                let ahNeeds: AlliedHealthNeed[] | undefined = rowData.alliedhealthneeds !== undefined ? (rowData.alliedhealthneeds ? rowData.alliedhealthneeds.split(';').map(needStr => { const [type, daysStr, timeStr] = needStr.split(':').map(s => s.trim()); if (!(type === 'OT' || type === 'SLP') || !daysStr || !timeStr) return null; const days = daysStr.split(',').map(d => d.trim() as DayOfWeek).filter(d => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(d)); const [startTime, endTime] = timeStr.split('-').map(t => t.trim()); return days.length > 0 && startTime && endTime ? { type, specificDays: days, startTime, endTime } as AlliedHealthNeed : null; }).filter(n => n) as AlliedHealthNeed[] : []) : undefined;
-                const partialClient: Partial<Client> = { name: rowData.name };
-                if (clientTeam !== undefined || rowData.teamname !== undefined) partialClient.teamId = clientTeam?.id;
+
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            // Normalize keys to lowercase for flexible header matching
+            const rowData: Record<string, any> = {};
+            Object.keys(row).forEach(key => {
+                rowData[key.trim().toLowerCase()] = row[key];
+            });
+
+            const rowAction = rowData.action?.toString().trim().toUpperCase();
+            const name = rowData.name?.toString().trim();
+
+            if (!rowAction || (rowAction !== 'ADD_UPDATE' && rowAction !== 'REMOVE')) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing or invalid ACTION column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+            if (!name) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing 'name' column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+
+            if (rowAction === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
+                const teamName = rowData.teamname?.toString().trim();
+                const clientTeam = teamName ? availableTeams.find(t => t.name.toLowerCase() === teamName.toLowerCase()) : undefined;
+
+                let insuranceReqs: string[] | undefined = undefined;
+                if (rowData.insurancerequirements !== undefined) {
+                    insuranceReqs = rowData.insurancerequirements.toString().split(';').map((s: string) => s.trim()).filter((s: string) => s);
+                    insuranceReqs.forEach(req => newInsuranceRequirementsFound.add(req));
+                }
+
+                let ahNeeds: AlliedHealthNeed[] | undefined = undefined;
+                if (rowData.alliedhealthneeds !== undefined) {
+                    ahNeeds = rowData.alliedhealthneeds.toString().split(';').map((needStr: string) => {
+                        const parts = needStr.split(':').map(s => s.trim());
+                        if (parts.length < 3) return null;
+                        const type = parts[0].toUpperCase() as 'OT' | 'SLP';
+                        if (type !== 'OT' && type !== 'SLP') return null;
+                        const days = parts[1].split(',').map(d => d.trim() as DayOfWeek).filter(d => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(d));
+                        const timeRange = parts[2].split('-').map(t => t.trim());
+                        if (timeRange.length < 2) return null;
+                        const [startTime, endTime] = timeRange;
+                        return (days.length > 0 && startTime && endTime) ? { type, specificDays: days, startTime, endTime } as AlliedHealthNeed : null;
+                    }).filter((n: any) => n !== null);
+                }
+
+                const partialClient: Partial<Client> = { name };
+                if (clientTeam) partialClient.teamId = clientTeam.id;
+                else if (teamName) partialClient.teamId = undefined; // Explicitly set to unassigned if team name provided but not found
+
                 if (insuranceReqs !== undefined) partialClient.insuranceRequirements = insuranceReqs;
                 if (ahNeeds !== undefined) partialClient.alliedHealthNeeds = ahNeeds;
                 clientsToProcess.push(partialClient);
-            } else if (rowData.action.toUpperCase() === 'REMOVE' && action === 'REMOVE') clientNamesToRemove.push(rowData.name);
+            } else if (rowAction === 'REMOVE' && action === 'REMOVE') {
+                clientNamesToRemove.push(name);
+            }
         }
-        if (action === 'ADD_UPDATE' && clientsToProcess.length > 0) { const result = await clientService.addOrUpdateBulkClients(clientsToProcess); summary.addedCount = result.addedCount; summary.updatedCount = result.updatedCount; }
-        else if (action === 'REMOVE' && clientNamesToRemove.length > 0) { const result = await clientService.removeClientsByNames(clientNamesToRemove); summary.removedCount = result.removedCount; }
+
+        if (action === 'ADD_UPDATE' && clientsToProcess.length > 0) {
+            const result = await clientService.addOrUpdateBulkClients(clientsToProcess);
+            summary.addedCount = result.addedCount;
+            summary.updatedCount = result.updatedCount;
+        } else if (action === 'REMOVE' && clientNamesToRemove.length > 0) {
+            const result = await clientService.removeClientsByNames(clientNamesToRemove);
+            summary.removedCount = result.removedCount;
+        }
         const currentIQs = settingsService.getInsuranceQualifications();
         const currentIQNames = currentIQs.map(q => q.id);
         const newIQNames = Array.from(newInsuranceRequirementsFound).filter(name => !currentIQNames.includes(name));
@@ -543,35 +627,70 @@ const App: React.FC = () => {
   };
 
   const handleBulkUpdateTherapists = async (file: File, action: 'ADD_UPDATE' | 'REMOVE'): Promise<BulkOperationSummary> => {
-    setLoadingState({active: true, message: "Processing therapist CSV..."}); setBulkOperationSummary(null); setError(null);
+    setLoadingState({active: true, message: "Processing staff file..."}); setBulkOperationSummary(null); setError(null);
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { qualifications: [] } };
     try {
-        const text = await file.text();
-        const rows = text.split('\n').map(row => row.trim()).filter(row => row);
-        if (rows.length <= 1) throw new Error("CSV file is empty or has only a header row.");
-        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-        summary.processedRows = rows.length - 1;
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
+
+        summary.processedRows = jsonData.length;
         const therapistsToProcess: Partial<Therapist>[] = [];
         const therapistNamesToRemove: string[] = [];
         const newQualificationsFound = new Set<string>();
-        for (let i = 1; i < rows.length; i++) {
-            const values = rows[i].split(',');
-            const rowData: Record<string, string> = headers.reduce((obj, header, index) => { obj[header] = values[index]?.trim() || ''; return obj; }, {} as Record<string, string>);
-            if (!rowData.action || (rowData.action.toUpperCase() !== 'ADD_UPDATE' && rowData.action.toUpperCase() !== 'REMOVE')) { summary.errors.push({ rowNumber: i + 1, message: "Missing or invalid ACTION column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (!rowData.name) { summary.errors.push({ rowNumber: i + 1, message: "Missing 'name' column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (rowData.action.toUpperCase() === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
-                const therapistTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
-                let qualifications: string[] | undefined = rowData.qualifications !== undefined ? (rowData.qualifications ? rowData.qualifications.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
-                if(qualifications) qualifications.forEach(q => newQualificationsFound.add(q));
-                const partialTherapist: Partial<Therapist> = { name: rowData.name };
-                if (rowData.role) partialTherapist.role = rowData.role as TherapistRole;
-                if (therapistTeam !== undefined || rowData.teamname !== undefined) partialTherapist.teamId = therapistTeam?.id;
+
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            const rowData: Record<string, any> = {};
+            Object.keys(row).forEach(key => {
+                rowData[key.trim().toLowerCase()] = row[key];
+            });
+
+            const rowAction = rowData.action?.toString().trim().toUpperCase();
+            const name = rowData.name?.toString().trim();
+
+            if (!rowAction || (rowAction !== 'ADD_UPDATE' && rowAction !== 'REMOVE')) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing or invalid ACTION column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+            if (!name) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing 'name' column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+
+            if (rowAction === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
+                const teamName = rowData.teamname?.toString().trim();
+                const therapistTeam = teamName ? availableTeams.find(t => t.name.toLowerCase() === teamName.toLowerCase()) : undefined;
+
+                let qualifications: string[] | undefined = undefined;
+                if (rowData.qualifications !== undefined) {
+                    qualifications = rowData.qualifications.toString().split(';').map((s: string) => s.trim()).filter((s: string) => s);
+                    qualifications.forEach(q => newQualificationsFound.add(q));
+                }
+
+                const partialTherapist: Partial<Therapist> = { name };
+                if (rowData.role) partialTherapist.role = rowData.role.toString().trim() as TherapistRole;
+                if (therapistTeam) partialTherapist.teamId = therapistTeam.id;
+                else if (teamName) partialTherapist.teamId = undefined;
+
                 if (qualifications !== undefined) partialTherapist.qualifications = qualifications;
                 therapistsToProcess.push(partialTherapist);
-            } else if (rowData.action.toUpperCase() === 'REMOVE' && action === 'REMOVE') therapistNamesToRemove.push(rowData.name);
+            } else if (rowAction === 'REMOVE' && action === 'REMOVE') {
+                therapistNamesToRemove.push(name);
+            }
         }
-        if (action === 'ADD_UPDATE' && therapistsToProcess.length > 0) { const result = await therapistService.addOrUpdateBulkTherapists(therapistsToProcess); summary.addedCount = result.addedCount; summary.updatedCount = result.updatedCount; }
-        else if (action === 'REMOVE' && therapistNamesToRemove.length > 0) { const result = await therapistService.removeTherapistsByNames(therapistNamesToRemove); summary.removedCount = result.removedCount; }
+
+        if (action === 'ADD_UPDATE' && therapistsToProcess.length > 0) {
+            const result = await therapistService.addOrUpdateBulkTherapists(therapistsToProcess);
+            summary.addedCount = result.addedCount;
+            summary.updatedCount = result.updatedCount;
+        } else if (action === 'REMOVE' && therapistNamesToRemove.length > 0) {
+            const result = await therapistService.removeTherapistsByNames(therapistNamesToRemove);
+            summary.removedCount = result.removedCount;
+        }
         const currentIQs = settingsService.getInsuranceQualifications();
         const currentIQNames = currentIQs.map(q => q.id);
         const newIQNames = Array.from(newQualificationsFound).filter(name => !currentIQNames.includes(name));
@@ -684,45 +803,77 @@ const App: React.FC = () => {
 
             {activeTab === 'clients' && (
               <div>
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Clients</h2>
-                  {canEdit && (
-                    <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                      <PlusIcon className="w-4 h-4" />
-                      <span>Add Client</span>
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-full mr-2">
+                        <button onClick={() => expandAllTeams(availableTeams, 'client')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Expand All</button>
+                        <div className="w-px h-4 bg-slate-200 self-center"></div>
+                        <button onClick={() => collapseAllTeams('client')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Collapse All</button>
+                    </div>
+                    {canEdit && (
+                        <button onClick={handleAddClient} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                        <PlusIcon className="w-4 h-4" />
+                        <span>Add Client</span>
+                        </button>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-12">
+                <div className="space-y-6">
                   {availableTeams.map(team => {
                     const teamClients = clients.filter(c => c.teamId === team.id).sort((a, b) => a.name.localeCompare(b.name));
                     if (teamClients.length === 0) return null;
+                    const isExpanded = expandedTeams[`client-${team.id}`];
                     return (
-                      <div key={team.id} className="space-y-6">
-                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
-                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
-                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamClients.length}</span>
-                        </div>
-                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                          {teamClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
-                        </div>
+                      <div key={team.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                        <button
+                            onClick={() => toggleTeamExpansion(`client-${team.id}`)}
+                            className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                                <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                                <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamClients.length}</span>
+                            </div>
+                            <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                            <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                    {teamClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                                </div>
+                            </div>
+                        )}
                       </div>
                     );
                   })}
 
-                  {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length > 0 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
-                        <h3 className="text-lg font-serif text-slate-700">Unassigned Clients</h3>
-                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length}</span>
-                      </div>
-                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                        {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name)).map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
-                      </div>
-                    </div>
-                  )}
+                  {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length > 0 && (() => {
+                    const unassignedClients = clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name));
+                    const isExpanded = expandedTeams[`client-unassigned`];
+                    return (
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                            <button
+                                onClick={() => toggleTeamExpansion(`client-unassigned`)}
+                                className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-1.5 h-6 rounded-full bg-slate-300"></div>
+                                    <h3 className="text-lg font-serif text-slate-700">Unassigned Clients</h3>
+                                    <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{unassignedClients.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isExpanded && (
+                                <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                    <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                        {unassignedClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                  })()}
 
                   {clients.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
@@ -734,45 +885,77 @@ const App: React.FC = () => {
             )}
             {activeTab === 'therapists' && (
               <div>
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight">Manage Staff</h2>
-                  {canEdit && (
-                    <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
-                      <PlusIcon className="w-4 h-4" />
-                      <span>Add Staff Member</span>
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-full mr-2">
+                        <button onClick={() => expandAllTeams(availableTeams, 'therapist')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Expand All</button>
+                        <div className="w-px h-4 bg-slate-200 self-center"></div>
+                        <button onClick={() => collapseAllTeams('therapist')} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors">Collapse All</button>
+                    </div>
+                    {canEdit && (
+                        <button onClick={handleAddTherapist} className="bg-brand-blue hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-full shadow-sm hover:shadow-md transition-all duration-200 flex items-center space-x-2 text-sm">
+                        <PlusIcon className="w-4 h-4" />
+                        <span>Add Staff Member</span>
+                        </button>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-12">
+                <div className="space-y-6">
                   {availableTeams.map(team => {
                     const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
                     if (teamTherapists.length === 0) return null;
+                    const isExpanded = expandedTeams[`therapist-${team.id}`];
                     return (
-                      <div key={team.id} className="space-y-6">
-                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
-                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
-                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamTherapists.length}</span>
-                        </div>
-                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                          {teamTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
-                        </div>
+                      <div key={team.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                        <button
+                            onClick={() => toggleTeamExpansion(`therapist-${team.id}`)}
+                            className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                                <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                                <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamTherapists.length}</span>
+                            </div>
+                            <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                            <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                    {teamTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                                </div>
+                            </div>
+                        )}
                       </div>
                     );
                   })}
 
-                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length > 0 && (
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
-                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
-                        <h3 className="text-lg font-serif text-slate-700">Unassigned Staff</h3>
-                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length}</span>
-                      </div>
-                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
-                        {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
-                      </div>
-                    </div>
-                  )}
+                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length > 0 && (() => {
+                    const unassignedTherapists = therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically);
+                    const isExpanded = expandedTeams[`therapist-unassigned`];
+                    return (
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-200">
+                            <button
+                                onClick={() => toggleTeamExpansion(`therapist-unassigned`)}
+                                className="w-full flex items-center justify-between p-4 sm:p-6 hover:bg-slate-50/50 transition-colors text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-1.5 h-6 rounded-full bg-slate-300"></div>
+                                    <h3 className="text-lg font-serif text-slate-700">Unassigned Staff</h3>
+                                    <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{unassignedTherapists.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-slate-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isExpanded && (
+                                <div className="p-4 sm:p-6 pt-0 space-y-8">
+                                    <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                                        {unassignedTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                  })()}
 
                   {therapists.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
