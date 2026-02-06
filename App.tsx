@@ -537,9 +537,9 @@ const App: React.FC = () => {
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { insuranceRequirements: [] }};
     try {
         const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data);
+        const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as any[];
 
         if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
 
@@ -609,6 +609,12 @@ const App: React.FC = () => {
             const result = await clientService.addOrUpdateBulkClients(clientsToProcess);
             summary.addedCount = result.addedCount;
             summary.updatedCount = result.updatedCount;
+            if (result.errors && result.errors.length > 0) {
+                result.errors.forEach(err => {
+                    summary.errors.push({ rowNumber: 0, message: err });
+                    summary.errorCount++;
+                });
+            }
         } else if (action === 'REMOVE' && clientNamesToRemove.length > 0) {
             const result = await clientService.removeClientsByNames(clientNamesToRemove);
             summary.removedCount = result.removedCount;
@@ -631,9 +637,9 @@ const App: React.FC = () => {
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { qualifications: [] } };
     try {
         const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data);
+        const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as any[];
 
         if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
 
@@ -687,6 +693,12 @@ const App: React.FC = () => {
             const result = await therapistService.addOrUpdateBulkTherapists(therapistsToProcess);
             summary.addedCount = result.addedCount;
             summary.updatedCount = result.updatedCount;
+            if (result.errors && result.errors.length > 0) {
+                result.errors.forEach(err => {
+                    summary.errors.push({ rowNumber: 0, message: err });
+                    summary.errorCount++;
+                });
+            }
         } else if (action === 'REMOVE' && therapistNamesToRemove.length > 0) {
             const result = await therapistService.removeTherapistsByNames(therapistNamesToRemove);
             summary.removedCount = result.removedCount;

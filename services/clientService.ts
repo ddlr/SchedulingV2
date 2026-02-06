@@ -126,19 +126,22 @@ export const removeClient = async (clientId: string): Promise<boolean> => {
   }
 };
 
-export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]): Promise<{ addedCount: number; updatedCount: number }> => {
+export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]): Promise<{ addedCount: number; updatedCount: number; errors: string[] }> => {
   let addedCount = 0;
   let updatedCount = 0;
+  const errors: string[] = [];
 
   for (const clientData of clientsToProcess) {
     if (!clientData.name) continue;
 
     try {
-      const { data: existing } = await supabase
+      const { data: existing, error: findError } = await supabase
         .from('clients')
         .select('id')
         .ilike('name', clientData.name)
         .maybeSingle();
+
+      if (findError) throw findError;
 
       if (existing) {
         const updateData: any = { updated_at: new Date().toISOString() };
@@ -147,16 +150,18 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
         if (clientData.insuranceRequirements !== undefined) updateData.insurance_requirements = clientData.insuranceRequirements;
         if (clientData.alliedHealthNeeds !== undefined) updateData.allied_health_needs = clientData.alliedHealthNeeds;
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('clients')
           .update(updateData)
           .eq('id', existing.id);
 
+        if (updateError) throw updateError;
         updatedCount++;
       } else {
-        await supabase
+        const { error: insertError } = await supabase
           .from('clients')
           .insert({
+            id: crypto.randomUUID(),
             name: clientData.name,
             team_id: clientData.teamId || null,
             color: clientData.color || null,
@@ -164,15 +169,18 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
             allied_health_needs: clientData.alliedHealthNeeds || []
           });
 
+        if (insertError) throw insertError;
         addedCount++;
       }
-    } catch (error) {
-      console.error("Error processing client:", clientData.name, error);
+    } catch (error: any) {
+      const msg = `Error processing client "${clientData.name}": ${error.message || 'Unknown error'}`;
+      console.error(msg, error);
+      errors.push(msg);
     }
   }
 
   await loadClients();
-  return { addedCount, updatedCount };
+  return { addedCount, updatedCount, errors };
 };
 
 export const removeClientsByNames = async (clientNamesToRemove: string[]): Promise<{ removedCount: number }> => {
