@@ -67,7 +67,9 @@ export const validateSessionEntry = (
   }
 
   const therapistData = therapistId ? therapists.find(t => t.id === therapistId) : null;
-  if (therapistId && !therapistData) {
+  if (!therapistId) {
+    errors.push({ ruleId: "UNASSIGNED_SESSION", message: `Session for ${clientName || 'N/A'} is not assigned to a staff member.` });
+  } else if (!therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
   } else if (therapistData) {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
