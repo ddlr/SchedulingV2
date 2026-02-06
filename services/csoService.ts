@@ -32,8 +32,11 @@ class BitTracker {
     }
     public book(ti: number, ci: number, s: number, l: number) {
         const m = ((1n << BigInt(l)) - 1n) << BigInt(s);
-        this.tBusy[ti] |= m;
-        if (ci >= 0) { this.cBusy[ci] |= m; this.cT[ci].add(ti); }
+        if (ti >= 0) { this.tBusy[ti] |= m; }
+        if (ci >= 0) {
+            this.cBusy[ci] |= m;
+            if (ti >= 0) { this.cT[ci].add(ti); }
+        }
     }
 }
 
@@ -219,57 +222,41 @@ export class FastScheduler {
 
         const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
 
-        // Pass 2: Allied Health
+        // Pass 2: Allied Health (Create unassigned sessions at exact times from client profiles)
         shuffledC.forEach(target => {
             target.c.alliedHealthNeeds.forEach(need => {
-                if (need.specificDays && !need.specificDays.includes(this.day)) return;
-                const len = Math.ceil(need.durationMinutes / SLOT_SIZE);
+                if (!need.specificDays || !need.specificDays.includes(this.day)) return;
+                if (!need.startTime || !need.endTime) return;
 
-                // Weekly and Duration Limit Check
+                const startMin = timeToMinutes(need.startTime);
+                const endMin = timeToMinutes(need.endTime);
+                const s = Math.floor((startMin - OP_START) / SLOT_SIZE);
+                const len = Math.ceil((endMin - startMin) / SLOT_SIZE);
+
+                if (s < 0 || s + len > NUM_SLOTS) return;
+
                 const currentMins = clientMinutes.get(target.ci) || 0;
                 const maxD = this.getMaxDuration(target.c);
                 if (currentMins + (len * SLOT_SIZE) > this.getMaxWeeklyMinutes(target.c)) return;
                 if (len * SLOT_SIZE > maxD) return;
 
                 const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
-                const slots = [];
-                for (let s = 0; s <= NUM_SLOTS - len; s++) slots.push(s);
-                // Heuristic: Prefer placing AH at edges, but with some randomness to explore
-                slots.sort((a, b) => (Math.min(a, NUM_SLOTS - (a + len)) - Math.min(b, NUM_SLOTS - (b + len))) + (Math.random() - 0.5) * 4);
-                for (const s of slots) {
-                    if (tracker.isCFree(target.ci, s, len)) {
-                        const possibleT = this.therapists.map((t, ti) => ({t, ti}))
-                            .filter(x => {
-                                if (!x.t.canProvideAlliedHealth.includes(need.type)) return false;
-                                const reqQual = need.type === 'OT' ? "OT Certified" : "SLP Certified";
-                                if (!x.t.qualifications.includes(reqQual)) return false;
-                                if (!tracker.isTFree(x.ti, s, len)) return false;
-                                // Insurance provider limit check
-                                const maxP = this.getMaxProviders(target.c);
-                                if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(x.ti)) return false;
-                                return true;
-                            })
-                            .sort((a, b) => this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role));
-                        if (possibleT.length > 0) {
-                            const q = possibleT[0];
-                            schedule.push(this.ent(target.ci, q.ti, s, len, type));
-                            tracker.book(q.ti, target.ci, s, len);
-                            tSessionCount[q.ti]++;
-                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                            break;
-                        }
-                    }
+
+                if (tracker.isCFree(target.ci, s, len)) {
+                    schedule.push(this.entUnassigned(target.ci, s, len, type));
+                    tracker.book(-1, target.ci, s, len);
+                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                 }
             });
         });
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
-                    // Find a therapist for this client starting at slot s
-                    const quals = sortedTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
@@ -346,6 +333,11 @@ export class FastScheduler {
         const client = ci >= 0 ? this.clients[ci] : null;
         const therapist = this.therapists[ti];
         return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: therapist.id, therapistName: therapist.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
+    }
+
+    private entUnassigned(ci: number, s: number, l: number, type: SessionType): ScheduleEntry {
+        const client = ci >= 0 ? this.clients[ci] : null;
+        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: null, therapistName: null, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
     }
 
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {

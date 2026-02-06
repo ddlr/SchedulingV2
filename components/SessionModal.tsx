@@ -30,8 +30,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
     id: ensureScheduleEntryId(),
     clientName: null,
     clientId: null,
-    therapistName: '',
-    therapistId: '',
+    therapistName: null,
+    therapistId: null,
     day: DayOfWeek.MONDAY,
     startTime: '',
     endTime: '',
@@ -44,6 +44,12 @@ const SessionModal: React.FC<SessionModalProps> = ({
   const sortedTeams = useMemo(() => {
     return [...availableTeams].sort((a, b) => a.name.localeCompare(b.name));
   }, [availableTeams]);
+
+  const filteredTherapists = useMemo(() => {
+    if (formData.sessionType === 'AlliedHealth_OT') return therapists.filter(t => t.role === 'OT');
+    if (formData.sessionType === 'AlliedHealth_SLP') return therapists.filter(t => t.role === 'SLP');
+    return therapists;
+  }, [therapists, formData.sessionType]);
 
   // Filter time slots to only show those within operating hours
   const visibleTimeSlots = useMemo(() => {
@@ -75,8 +81,10 @@ const SessionModal: React.FC<SessionModalProps> = ({
         const client = availableClients.find(c => c.id === currentClientId);
         const ahType = sessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
         const need = client?.alliedHealthNeeds.find(n => n.type === ahType);
-        if (need && need.durationMinutes > 0) {
-            durationMinutesDefault = need.durationMinutes;
+        if (need && need.startTime && need.endTime) {
+            const startMinutes = parseInt(need.startTime.split(':')[0]) * 60 + parseInt(need.startTime.split(':')[1]);
+            const endMinutes = parseInt(need.endTime.split(':')[0]) * 60 + parseInt(need.endTime.split(':')[1]);
+            durationMinutesDefault = endMinutes - startMinutes;
         } else {
             durationMinutesDefault = 45;
         }
@@ -145,7 +153,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     if (field === 'therapistId') {
         const therapist = therapists.find(t => t.id === value);
-        newFormData.therapistName = therapist ? therapist.name : '';
+        newFormData.therapistName = therapist ? therapist.name : null;
+        newFormData.therapistId = value ? value as string : null;
     }
 
     if (field === 'clientId') {
@@ -165,6 +174,14 @@ const SessionModal: React.FC<SessionModalProps> = ({
              newFormData.clientId = clients[0].id;
              newFormData.clientName = clients[0].name;
         }
+        if (newSessionType === 'AlliedHealth_OT' || newSessionType === 'AlliedHealth_SLP') {
+            const requiredRole = newSessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
+            const currentTherapist = therapists.find(t => t.id === newFormData.therapistId);
+            if (!currentTherapist || currentTherapist.role !== requiredRole) {
+                newFormData.therapistId = null;
+                newFormData.therapistName = null;
+            }
+        }
         newFormData.endTime = calculateDefaultEndTime(newFormData.startTime, newSessionType, newFormData.clientId, clients);
     }
 
@@ -182,7 +199,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     const localErrors: ValidationError[] = [];
 
-    if (!formData.therapistId) {
+    if (!formData.therapistId && formData.sessionType !== 'AlliedHealth_OT' && formData.sessionType !== 'AlliedHealth_SLP') {
       localErrors.push({ ruleId: "MISSING_THERAPIST", message: "Staff member must be selected."});
     }
     if (formData.sessionType !== 'IndirectTime' && !formData.clientId) {
@@ -294,14 +311,14 @@ const SessionModal: React.FC<SessionModalProps> = ({
             <label htmlFor="sessionTherapist" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Staff Member</label>
             <select
               id="sessionTherapist"
-              value={formData.therapistId}
+              value={formData.therapistId || ''}
               onChange={(e) => handleInputChange('therapistId', e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
-              required
+              required={formData.sessionType !== 'AlliedHealth_OT' && formData.sessionType !== 'AlliedHealth_SLP'}
             >
               <option value="">Select Staff...</option>
               {sortedTeams.map(team => {
-                const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
+                const teamTherapists = filteredTherapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
                 if (teamTherapists.length === 0) return null;
                 return (
                   <optgroup key={team.id} label={`${team.name} Team`}>
@@ -309,9 +326,9 @@ const SessionModal: React.FC<SessionModalProps> = ({
                   </optgroup>
                 );
               })}
-              {therapists.some(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)) && (
+              {filteredTherapists.some(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)) && (
                 <optgroup label="Unassigned">
-                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
+                  {filteredTherapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(t => <option key={t.id} value={t.id}>{t.name} ({t.role})</option>)}
                 </optgroup>
               )}
             </select>

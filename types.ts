@@ -17,15 +17,15 @@ export interface Team {
 
 export type AlliedHealthServiceType = 'OT' | 'SLP';
 export type SessionType = 'ABA' | 'AlliedHealth_OT' | 'AlliedHealth_SLP' | 'IndirectTime' | 'AdminTime';
-export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RBT" | "BT" | "Other";
+export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RBT" | "BT" | "OT" | "SLP" | "Other";
 
 
 export interface AlliedHealthNeed {
   type: AlliedHealthServiceType;
-  frequencyPerWeek: number;
-  durationMinutes: number;
-  preferredTimeSlot?: { startTime: string; endTime: string };
-  specificDays?: DayOfWeek[];
+  specificDays: DayOfWeek[];
+  startTime: string;
+  endTime: string;
+  preferredProviderId?: string;
 }
 
 export interface InsuranceQualification {
@@ -55,15 +55,14 @@ export interface Therapist {
   role: TherapistRole;
   teamId?: string;
   qualifications: string[];
-  canProvideAlliedHealth: AlliedHealthServiceType[];
 }
 
 export interface ScheduleEntry {
   id: string; // Unique ID for each entry
   clientName: string | null;
   clientId: string | null; // New: ID of the client
-  therapistName: string;
-  therapistId: string; // New: ID of the therapist
+  therapistName: string | null;
+  therapistId: string | null; // New: ID of the therapist
   day: DayOfWeek;
   startTime: string; // HH:MM
   endTime: string;   // HH:MM

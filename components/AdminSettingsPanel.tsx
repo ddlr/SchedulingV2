@@ -66,7 +66,7 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
       <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Client's full name. Must be unique for reliable <code>REMOVE</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Client assigned if team exists. Blank or non-existent team = unassigned.</li>
       <li><strong>insuranceRequirements:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "TRICARE;BCBA Certified"). New requirements added to Settings.</li>
-      <li><strong>alliedHealthNeeds:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list in format <code>TYPE:FREQ:DURATION</code> (e.g., "OT:2:60;SLP:1:30"). TYPE is OT or SLP. FREQ is times/week. DURATION is mins/session.</li>
+      <li><strong>alliedHealthNeeds:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list in format <code>TYPE:DAYS:TIME</code> (e.g., "OT:Monday,Tuesday:14:00-14:30;SLP:Friday:10:00-10:30"). TYPE is OT or SLP. DAYS is comma-separated days. TIME is startTime-endTime in HH:MM format.</li>
     </ul>
     <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a client with 'name' exists, they are updated. Otherwise, a new client is created.</p>
     <p class="text-xs">For <code>REMOVE</code>, client with matching 'name' is removed.</p>
@@ -79,8 +79,6 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
       <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Staff member's full name. Must be unique for reliable <code>REMOVE</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Assignment logic similar to clients.</li>
       <li><strong>qualifications:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "RBT;CPR Certified"). New qualifications added to Settings.</li>
-      <li><strong>canCoverIndirect:</strong> (Optional for <code>ADD_UPDATE</code>) <code>TRUE</code> or <code>FALSE</code>.</li>
-      <li><strong>canProvideAlliedHealth:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list of allied health service types (e.g., "OT;SLP").</li>
     </ul>
     <p class="mt-2 text-xs">For <code>ADD_UPDATE</code>, if a staff member with 'name' exists, they are updated. Otherwise, a new one is created.</p>
     <p class="text-xs">For <code>REMOVE</code>, staff member with matching 'name' is removed.</p>

@@ -1,5 +1,5 @@
 
-import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, AlliedHealthServiceType, ValidationError, Callout, InsuranceQualification, TherapistRole } from '../types';
+import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, ValidationError, Callout, InsuranceQualification } from '../types';
 import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
 
 export const timeToMinutes = (time: string): number => {
@@ -66,10 +66,10 @@ export const validateSessionEntry = (
     errors.push({ ruleId: "INVALID_TIME_ORDER", message: "Session end time must be after start time." });
   }
 
-  const therapistData = therapists.find(t => t.id === therapistId);
-  if (!therapistData) {
+  const therapistData = therapistId ? therapists.find(t => t.id === therapistId) : null;
+  if (therapistId && !therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
-  } else {
+  } else if (therapistData) {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
         endTimeMinutes > timeToMinutes(STAFF_ASSUMED_AVAILABILITY_END)) {
       errors.push({
@@ -100,7 +100,7 @@ export const validateSessionEntry = (
     if (originalEntryForEditId && existingEntry.id === originalEntryForEditId) return;
     if (existingEntry.id === entryToValidate.id && originalEntryForEditId !== entryToValidate.id) return; 
 
-    if (existingEntry.therapistId === therapistId &&
+    if (therapistId && existingEntry.therapistId === therapistId &&
         existingEntry.day === day &&
         sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
@@ -121,7 +121,7 @@ export const validateSessionEntry = (
     }
 
     // Check for back-to-back same client sessions (no break allowed)
-    if (clientId && existingEntry.clientId === clientId &&
+    if (therapistId && clientId && existingEntry.clientId === clientId &&
         existingEntry.therapistId === therapistId &&
         existingEntry.day === day &&
         (existingEntry.endTime === startTime || existingEntry.startTime === endTime)) {
@@ -191,21 +191,13 @@ export const validateSessionEntry = (
 
   if (sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP') {
     const serviceType = sessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
-    if (therapistData && !therapistData.canProvideAlliedHealth.includes(serviceType)) {
+    if (therapistData && therapistData.role !== serviceType) {
       errors.push({
           ruleId: "ALLIED_HEALTH_QUALIFICATION_MISSING",
-          message: `Therapist ${therapistName} cannot provide ${serviceType} services.`,
+          message: `Therapist ${therapistName} (${therapistData.role}) is not an ${serviceType} provider. Only staff with the ${serviceType} role can provide ${serviceType} services.`,
           details: { entryId: entryToValidate.id }
       });
     }
-    const requiredQual = serviceType === 'OT' ? "OT Certified" : "SLP Certified"; 
-     if (therapistData && !therapistData.qualifications.includes(requiredQual)) {
-        errors.push({
-          ruleId: "ALLIED_HEALTH_CERTIFICATION_MISSING",
-          message: `Therapist ${therapistName} lacks qualification "${requiredQual}" for ${serviceType}.`,
-          details: { entryId: entryToValidate.id }
-      });
-     }
   }
 
   const duration = endTimeMinutes - startTimeMinutes;
@@ -327,7 +319,7 @@ export const validateFullSchedule = (
     }
   });
 
-  const scheduledTherapistIds = new Set(scheduleToValidate.map(s => s.therapistId));
+  const scheduledTherapistIds = new Set(scheduleToValidate.map(s => s.therapistId).filter(id => id !== null));
   scheduledTherapistIds.forEach(therapistId => {
     const therapist = therapists.find(t => t.id === therapistId);
     if (!therapist) return; 

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Therapist, TherapistFormProps, AlliedHealthServiceType, TherapistRole } from '../types';
-import { ALL_ALLIED_HEALTH_SERVICES, ALL_THERAPIST_ROLES } from '../constants';
+import { Therapist, TherapistFormProps, TherapistRole } from '../types';
+import { ALL_THERAPIST_ROLES } from '../constants';
 import { TrashIcon } from './icons/TrashIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
 
@@ -13,16 +13,9 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
     setFormData(newFormData);
     onUpdate(newFormData);
   };
-  
+
   const handleQualificationsChange = (selectedQualifications: string[]) => {
     handleInputChange('qualifications', selectedQualifications);
-  };
-  
-  const handleAlliedHealthToggle = (service: AlliedHealthServiceType) => {
-    const newServices = formData.canProvideAlliedHealth.includes(service)
-      ? formData.canProvideAlliedHealth.filter(s => s !== service)
-      : [...formData.canProvideAlliedHealth, service];
-    handleInputChange('canProvideAlliedHealth', newServices);
   };
 
   return (
@@ -91,30 +84,6 @@ const TherapistForm: React.FC<TherapistFormProps> = ({ therapist, availableTeams
         )}
       </div>
       
-      <div>
-        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Allied Health Capabilities</label>
-        <div className="flex flex-wrap gap-2">
-          {ALL_ALLIED_HEALTH_SERVICES.map(service => (
-            <label
-              key={service}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl border transition-all cursor-pointer ${
-                formData.canProvideAlliedHealth.includes(service)
-                  ? 'bg-brand-blue/5 border-brand-blue text-brand-blue'
-                  : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={formData.canProvideAlliedHealth.includes(service)}
-                onChange={() => handleAlliedHealthToggle(service)}
-                className="hidden"
-              />
-              <span className="text-sm font-medium">{service}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
         <p className="text-xs leading-relaxed text-slate-500">
           <span className="font-bold uppercase tracking-tighter mr-2">Schedule Rules:</span>

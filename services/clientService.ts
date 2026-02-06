@@ -52,9 +52,11 @@ export const getClients = (): Client[] => {
 
 export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Client> => {
   try {
+    const newId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('clients')
       .insert({
+        id: newId,
         name: newClientData.name,
         team_id: newClientData.teamId || null,
         color: newClientData.color || null,
