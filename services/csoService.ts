@@ -219,7 +219,7 @@ export class FastScheduler {
 
         const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
 
-        // Pass 2: Allied Health
+        // Pass 2: Allied Health (Create unassigned sessions at exact times from client profiles)
         shuffledC.forEach(target => {
             target.c.alliedHealthNeeds.forEach(need => {
                 if (!need.specificDays || !need.specificDays.includes(this.day)) return;
@@ -240,27 +240,9 @@ export class FastScheduler {
                 const type: SessionType = `AlliedHealth_${need.type}` as SessionType;
 
                 if (tracker.isCFree(target.ci, s, len)) {
-                    const possibleT = this.therapists.map((t, ti) => ({t, ti}))
-                        .filter(x => {
-                            if (x.t.role !== need.type) return false;
-                            if (!tracker.isTFree(x.ti, s, len)) return false;
-                            const maxP = this.getMaxProviders(target.c);
-                            if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(x.ti)) return false;
-                            return true;
-                        })
-                        .sort((a, b) => {
-                            const aIsPreferred = need.preferredProviderId && a.t.id === need.preferredProviderId ? 0 : 1;
-                            const bIsPreferred = need.preferredProviderId && b.t.id === need.preferredProviderId ? 0 : 1;
-                            if (aIsPreferred !== bIsPreferred) return aIsPreferred - bIsPreferred;
-                            return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
-                        });
-                    if (possibleT.length > 0) {
-                        const q = possibleT[0];
-                        schedule.push(this.ent(target.ci, q.ti, s, len, type));
-                        tracker.book(q.ti, target.ci, s, len);
-                        tSessionCount[q.ti]++;
-                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                    }
+                    schedule.push(this.entUnassigned(target.ci, s, len, type));
+                    tracker.book(-1, target.ci, s, len);
+                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                 }
             });
         });
@@ -348,6 +330,11 @@ export class FastScheduler {
         const client = ci >= 0 ? this.clients[ci] : null;
         const therapist = this.therapists[ti];
         return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: therapist.id, therapistName: therapist.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
+    }
+
+    private entUnassigned(ci: number, s: number, l: number, type: SessionType): ScheduleEntry {
+        const client = ci >= 0 ? this.clients[ci] : null;
+        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: null, therapistName: null, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
     }
 
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {

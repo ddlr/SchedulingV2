@@ -256,8 +256,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                                     onDragStart={canEdit ? (e) => handleDragStart(e, entryForCell) : undefined}
                                     onDragEnd={canEdit ? handleDragEnd : undefined}
                                     onClick={canEdit ? () => onOpenEditSessionModal(entryForCell) : undefined}
-                                    title={canEdit ? `Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}` : `${entryForCell.clientName || styling.display} with ${entryForCell.therapistName}`}
-                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}.`}
+                                    title={canEdit ? `Drag to move • Click to edit: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName || 'Unassigned'}` : `${entryForCell.clientName || styling.display} with ${entryForCell.therapistName || 'Unassigned'}`}
+                                    aria-label={`Session: ${entryForCell.clientName || styling.display} with ${entryForCell.therapistName || 'Unassigned'} from ${to12HourTime(entryForCell.startTime)} to ${to12HourTime(entryForCell.endTime)}.`}
                                 >
                                 <div className="flex flex-col h-full bg-white/10 p-1.5 rounded-xl border border-white/20 shadow-sm backdrop-blur-[2px] hover:backdrop-blur-none transition-all">
                                   <div className="flex-1 min-w-0">

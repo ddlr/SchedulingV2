@@ -30,8 +30,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
     id: ensureScheduleEntryId(),
     clientName: null,
     clientId: null,
-    therapistName: '',
-    therapistId: '',
+    therapistName: null,
+    therapistId: null,
     day: DayOfWeek.MONDAY,
     startTime: '',
     endTime: '',
@@ -153,7 +153,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     if (field === 'therapistId') {
         const therapist = therapists.find(t => t.id === value);
-        newFormData.therapistName = therapist ? therapist.name : '';
+        newFormData.therapistName = therapist ? therapist.name : null;
+        newFormData.therapistId = value ? value as string : null;
     }
 
     if (field === 'clientId') {
@@ -177,8 +178,8 @@ const SessionModal: React.FC<SessionModalProps> = ({
             const requiredRole = newSessionType === 'AlliedHealth_OT' ? 'OT' : 'SLP';
             const currentTherapist = therapists.find(t => t.id === newFormData.therapistId);
             if (!currentTherapist || currentTherapist.role !== requiredRole) {
-                newFormData.therapistId = '';
-                newFormData.therapistName = '';
+                newFormData.therapistId = null;
+                newFormData.therapistName = null;
             }
         }
         newFormData.endTime = calculateDefaultEndTime(newFormData.startTime, newSessionType, newFormData.clientId, clients);
@@ -198,7 +199,7 @@ const SessionModal: React.FC<SessionModalProps> = ({
 
     const localErrors: ValidationError[] = [];
 
-    if (!formData.therapistId) {
+    if (!formData.therapistId && formData.sessionType !== 'AlliedHealth_OT' && formData.sessionType !== 'AlliedHealth_SLP') {
       localErrors.push({ ruleId: "MISSING_THERAPIST", message: "Staff member must be selected."});
     }
     if (formData.sessionType !== 'IndirectTime' && !formData.clientId) {
@@ -310,10 +311,10 @@ const SessionModal: React.FC<SessionModalProps> = ({
             <label htmlFor="sessionTherapist" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Staff Member</label>
             <select
               id="sessionTherapist"
-              value={formData.therapistId}
+              value={formData.therapistId || ''}
               onChange={(e) => handleInputChange('therapistId', e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
-              required
+              required={formData.sessionType !== 'AlliedHealth_OT' && formData.sessionType !== 'AlliedHealth_SLP'}
             >
               <option value="">Select Staff...</option>
               {sortedTeams.map(team => {

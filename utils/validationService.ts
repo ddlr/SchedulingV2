@@ -66,10 +66,10 @@ export const validateSessionEntry = (
     errors.push({ ruleId: "INVALID_TIME_ORDER", message: "Session end time must be after start time." });
   }
 
-  const therapistData = therapists.find(t => t.id === therapistId);
-  if (!therapistData) {
+  const therapistData = therapistId ? therapists.find(t => t.id === therapistId) : null;
+  if (therapistId && !therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
-  } else {
+  } else if (therapistData) {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
         endTimeMinutes > timeToMinutes(STAFF_ASSUMED_AVAILABILITY_END)) {
       errors.push({
@@ -100,7 +100,7 @@ export const validateSessionEntry = (
     if (originalEntryForEditId && existingEntry.id === originalEntryForEditId) return;
     if (existingEntry.id === entryToValidate.id && originalEntryForEditId !== entryToValidate.id) return; 
 
-    if (existingEntry.therapistId === therapistId &&
+    if (therapistId && existingEntry.therapistId === therapistId &&
         existingEntry.day === day &&
         sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
@@ -121,7 +121,7 @@ export const validateSessionEntry = (
     }
 
     // Check for back-to-back same client sessions (no break allowed)
-    if (clientId && existingEntry.clientId === clientId &&
+    if (therapistId && clientId && existingEntry.clientId === clientId &&
         existingEntry.therapistId === therapistId &&
         existingEntry.day === day &&
         (existingEntry.endTime === startTime || existingEntry.startTime === endTime)) {
@@ -319,7 +319,7 @@ export const validateFullSchedule = (
     }
   });
 
-  const scheduledTherapistIds = new Set(scheduleToValidate.map(s => s.therapistId));
+  const scheduledTherapistIds = new Set(scheduleToValidate.map(s => s.therapistId).filter(id => id !== null));
   scheduledTherapistIds.forEach(therapistId => {
     const therapist = therapists.find(t => t.id === therapistId);
     if (!therapist) return; 
