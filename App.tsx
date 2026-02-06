@@ -15,6 +15,7 @@ import { PlusIcon } from './components/icons/PlusIcon';
 import { TrashIcon } from './components/icons/TrashIcon';
 import { runCsoAlgorithm } from './services/csoService';
 import { validateFullSchedule, timeToMinutes, minutesToTime } from './utils/validationService';
+import { sortStaffHierarchically } from './utils/staffUtils';
 import { CalendarIcon } from './components/icons/CalendarIcon';
 import { UserGroupIcon } from './components/icons/UserGroupIcon';
 import { ClockIcon } from './components/icons/ClockIcon';
@@ -474,7 +475,7 @@ const App: React.FC = () => {
     if (selectedTherapistIds.length > 0) {
         result = result.filter(t => selectedTherapistIds.includes(t.id));
     }
-    return result.sort((a,b) => a.name.localeCompare(b.name));
+    return result.sort(sortStaffHierarchically);
   }, [therapists, selectedTeamIds, selectedTherapistIds]);
 
   const displayedSchedule = useMemo(() => {
@@ -694,8 +695,37 @@ const App: React.FC = () => {
                     </button>
                   )}
                 </div>
-                <div className="space-y-8">
-                  {clients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                <div className="space-y-12">
+                  {availableTeams.map(team => {
+                    const teamClients = clients.filter(c => c.teamId === team.id).sort((a, b) => a.name.localeCompare(b.name));
+                    if (teamClients.length === 0) return null;
+                    return (
+                      <div key={team.id} className="space-y-6">
+                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
+                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamClients.length}</span>
+                        </div>
+                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                          {teamClients.map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length > 0 && (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
+                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
+                        <h3 className="text-lg font-serif text-slate-700">Unassigned Clients</h3>
+                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).length}</span>
+                      </div>
+                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                        {clients.filter(c => !c.teamId || !availableTeams.find(t => t.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name)).map(client => (<ClientForm key={client.id} client={client} therapists={therapists} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateClient} onRemove={handleRemoveClient} />))}
+                      </div>
+                    </div>
+                  )}
+
                   {clients.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
                       <p className="text-slate-400">No clients added yet.</p>
@@ -715,8 +745,37 @@ const App: React.FC = () => {
                     </button>
                   )}
                 </div>
-                <div className="space-y-8">
-                  {therapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                <div className="space-y-12">
+                  {availableTeams.map(team => {
+                    const teamTherapists = therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically);
+                    if (teamTherapists.length === 0) return null;
+                    return (
+                      <div key={team.id} className="space-y-6">
+                        <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
+                          <div className="w-1 h-6 rounded-full" style={{ backgroundColor: team.color }}></div>
+                          <h3 className="text-lg font-serif text-slate-700">{team.name} Team</h3>
+                          <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{teamTherapists.length}</span>
+                        </div>
+                        <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                          {teamTherapists.map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length > 0 && (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
+                        <div className="w-1 h-6 rounded-full bg-slate-300"></div>
+                        <h3 className="text-lg font-serif text-slate-700">Unassigned Staff</h3>
+                        <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md uppercase tracking-widest">{therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).length}</span>
+                      </div>
+                      <div className="space-y-8 pl-4 border-l-2 border-slate-50">
+                        {therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically).map(therapist => (<TherapistForm key={therapist.id} therapist={therapist} availableTeams={availableTeams} availableInsuranceQualifications={availableInsuranceQualifications} onUpdate={handleUpdateTherapist} onRemove={handleRemoveTherapist} />))}
+                      </div>
+                    </div>
+                  )}
+
                   {therapists.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl">
                       <p className="text-slate-400">No staff members added yet.</p>
@@ -778,7 +837,37 @@ const App: React.FC = () => {
                       <label htmlFor="calloutEntityId" className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Select {calloutForm.entityType === 'client' ? 'Client' : 'Staff Member'}</label>
                       <select key={calloutForm.entityType} id="calloutEntityId" value={calloutForm.entityId} onChange={(e) => handleCalloutFormChange('entityId', e.target.value)} required className="block w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 focus:ring-2 focus:ring-brand-blue/20 outline-none">
                         <option value="">-- Select --</option>
-                        {getCurrentCalloutEntityList().map(entity => (<option key={entity.id} value={entity.id}>{entity.name}</option>))}
+                        {[...availableTeams].sort((a,b) => a.name.localeCompare(b.name)).map(team => {
+                          const teamEntities = (calloutForm.entityType === 'client'
+                            ? clients.filter(c => c.teamId === team.id).sort((a,b) => a.name.localeCompare(b.name))
+                            : therapists.filter(t => t.teamId === team.id).sort(sortStaffHierarchically)
+                          );
+                          if (teamEntities.length === 0) return null;
+                          return (
+                            <optgroup key={team.id} label={`${team.name} Team`}>
+                              {teamEntities.map(entity => (
+                                <option key={entity.id} value={entity.id}>
+                                  {entity.name} {'role' in entity ? `(${entity.role})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        })}
+                        {(calloutForm.entityType === 'client'
+                          ? clients.filter(c => !c.teamId || !availableTeams.find(team => team.id === c.teamId))
+                          : therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId))
+                        ).length > 0 && (
+                          <optgroup label="Unassigned">
+                            {(calloutForm.entityType === 'client'
+                              ? clients.filter(c => !c.teamId || !availableTeams.find(team => team.id === c.teamId)).sort((a,b) => a.name.localeCompare(b.name))
+                              : therapists.filter(t => !t.teamId || !availableTeams.find(team => team.id === t.teamId)).sort(sortStaffHierarchically)
+                            ).map(entity => (
+                              <option key={entity.id} value={entity.id}>
+                                {entity.name} {'role' in entity ? `(${entity.role})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -846,7 +935,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {isSessionModalOpen && ( <SessionModal isOpen={isSessionModalOpen} onClose={handleCloseSessionModal} onSave={handleSaveSession} onDelete={sessionToEdit ? handleDeleteSession : undefined} sessionData={sessionToEdit} newSessionSlot={newSessionSlotDetails} clients={clients} therapists={therapists} insuranceQualifications={availableInsuranceQualifications} availableSessionTypes={ALL_SESSION_TYPES} timeSlots={TIME_SLOTS_H_MM} currentSchedule={schedule || []} currentError={error} clearError={() => setError(null)} /> )}
+      {isSessionModalOpen && ( <SessionModal isOpen={isSessionModalOpen} onClose={handleCloseSessionModal} onSave={handleSaveSession} onDelete={sessionToEdit ? handleDeleteSession : undefined} sessionData={sessionToEdit} newSessionSlot={newSessionSlotDetails} clients={clients} therapists={therapists} availableTeams={availableTeams} insuranceQualifications={availableInsuranceQualifications} availableSessionTypes={ALL_SESSION_TYPES} timeSlots={TIME_SLOTS_H_MM} currentSchedule={schedule || []} currentError={error} clearError={() => setError(null)} /> )}
       <footer className="bg-white border-t border-slate-100 py-8 text-center text-sm text-slate-500">
         <div className="container mx-auto px-4">
           <p className="font-serif text-lg text-slate-900 mb-2">Fiddler Scheduler</p>

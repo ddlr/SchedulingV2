@@ -6,6 +6,7 @@ import { UserGroupIcon } from './icons/UserGroupIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { to12HourTime } from '../utils/validationService';
 import { getClientColor, getContrastText } from '../utils/colorUtils';
+import { sortStaffHierarchically } from '../utils/staffUtils';
 
 const timeToMinutes = (time: string): number => {
   if (!time || !time.includes(':')) return 0;
@@ -108,7 +109,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
           };
       }
       acc[teamId].therapists.push(therapist);
-      acc[teamId].therapists.sort((a,b) => a.name.localeCompare(b.name));
+      acc[teamId].therapists.sort(sortStaffHierarchically);
       return acc;
     }, {} as Record<string, { therapists: Therapist[]; color?: string; name: string }>);
   }, [therapistsToDisplay, availableTeams]);

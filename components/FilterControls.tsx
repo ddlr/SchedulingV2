@@ -1,13 +1,14 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Team, Therapist, Client, FilterControlsProps } from '../types';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { XMarkIcon } from './icons/XMarkIcon';
+import { sortStaffHierarchically } from '../utils/staffUtils';
 
 interface DropdownFilterProps {
   id: string;
   label: string;
-  items: { id: string; name: string; color?: string }[];
+  items: { id: string; name: string; color?: string; group?: string }[];
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   placeholder?: string;
@@ -23,6 +24,23 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const itemsByGroup = useMemo(() => {
+    return items.reduce((acc, item) => {
+      const group = item.group || '';
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(item);
+      return acc;
+    }, {} as Record<string, typeof items>);
+  }, [items]);
+
+  const sortedGroups = useMemo(() => {
+    return Object.keys(itemsByGroup).sort((a, b) => {
+        if (a === 'Unassigned' || a === '') return 1;
+        if (b === 'Unassigned' || b === '') return -1;
+        return a.localeCompare(b);
+    });
+  }, [itemsByGroup]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -63,7 +81,6 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
     return `${selectedIds.length} ${label} selected`;
   };
   
-  const sortedItems = [...items].sort((a,b) => a.name.localeCompare(b.name));
   const isAllSelected = items.length > 0 && selectedIds.length === items.length;
 
   return (
@@ -98,20 +115,29 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
                     </label>
                   </li>
             )}
-            {sortedItems.map(item => (
-              <li key={item.id} role="option" aria-selected={selectedIds.includes(item.id)}>
-                <label className="flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group">
-                  <input
-                    type="checkbox"
-                    className="form-checkbox h-4 w-4 text-brand-blue rounded border-slate-200 focus:ring-brand-blue/20 transition-all"
-                    checked={selectedIds.includes(item.id)}
-                    onChange={() => handleCheckboxChange(item.id)}
-                    aria-label={item.name}
-                  />
-                  {item.color && <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: item.color }} aria-hidden="true"></span>}
-                  <span className="truncate group-hover:text-slate-900 transition-colors">{item.name}</span>
-                </label>
-              </li>
+            {sortedGroups.map(groupName => (
+              <React.Fragment key={groupName}>
+                {groupName !== '' && sortedGroups.length > 1 && (
+                  <li className="px-3 py-1 mt-2 mb-1 border-t border-slate-50 first:border-t-0">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{groupName}</span>
+                  </li>
+                )}
+                {itemsByGroup[groupName].map(item => (
+                  <li key={item.id} role="option" aria-selected={selectedIds.includes(item.id)}>
+                    <label className="flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors group">
+                      <input
+                        type="checkbox"
+                        className="form-checkbox h-4 w-4 text-brand-blue rounded border-slate-200 focus:ring-brand-blue/20 transition-all"
+                        checked={selectedIds.includes(item.id)}
+                        onChange={() => handleCheckboxChange(item.id)}
+                        aria-label={item.name}
+                      />
+                      {item.color && <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm" style={{ backgroundColor: item.color }} aria-hidden="true"></span>}
+                      <span className="truncate group-hover:text-slate-900 transition-colors">{item.name}</span>
+                    </label>
+                  </li>
+                ))}
+              </React.Fragment>
             ))}
             {items.length === 0 && <li className="px-3 py-4 text-sm text-slate-400 italic text-center">No options available</li>}
           </ul>
@@ -146,7 +172,15 @@ const FilterControls: React.FC<FilterControlsProps> = ({
       <DropdownFilter
         id="therapist-filter"
         label="Filter by Staff"
-        items={allTherapists.map(t => ({ id: t.id, name: t.name }))}
+        items={allTherapists.sort(sortStaffHierarchically).map(t => {
+          const team = allTeams.find(team => team.id === t.teamId);
+          return {
+            id: t.id,
+            name: t.name,
+            group: team?.name || 'Unassigned',
+            color: team?.color
+          };
+        })}
         selectedIds={selectedTherapistIds}
         onSelectionChange={onTherapistFilterChange}
         placeholder="All Staff"
@@ -154,7 +188,15 @@ const FilterControls: React.FC<FilterControlsProps> = ({
       <DropdownFilter
         id="client-filter"
         label="Filter by Clients"
-        items={allClients.map(c => ({ id: c.id, name: c.name }))}
+        items={allClients.sort((a,b) => a.name.localeCompare(b.name)).map(c => {
+          const team = allTeams.find(team => team.id === c.teamId);
+          return {
+            id: c.id,
+            name: c.name,
+            group: team?.name || 'Unassigned',
+            color: team?.color
+          };
+        })}
         selectedIds={selectedClientIds}
         onSelectionChange={onClientFilterChange}
         placeholder="All Clients"
