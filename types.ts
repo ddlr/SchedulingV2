@@ -22,10 +22,9 @@ export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RB
 
 export interface AlliedHealthNeed {
   type: AlliedHealthServiceType;
-  frequencyPerWeek: number;
-  durationMinutes: number;
-  preferredTimeSlot?: { startTime: string; endTime: string };
-  specificDays?: DayOfWeek[];
+  specificDays: DayOfWeek[];
+  startTime: string;
+  endTime: string;
 }
 
 export interface InsuranceQualification {

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Client, ClientFormProps, AlliedHealthNeed, AlliedHealthServiceType } from '../types';
-import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
+import { Client, ClientFormProps, AlliedHealthNeed, AlliedHealthServiceType, DayOfWeek } from '../types';
+import { TIME_SLOTS_H_MM, ALL_ALLIED_HEALTH_SERVICES, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, DAYS_OF_WEEK } from '../constants';
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import SearchableMultiSelectDropdown from './SearchableMultiSelectDropdown';
@@ -19,17 +19,24 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
   const handleAlliedHealthChange = (index: number, field: keyof AlliedHealthNeed, value: any) => {
     const newAlliedHealthNeeds = [...formData.alliedHealthNeeds];
     (newAlliedHealthNeeds[index] as any)[field] = value;
-     if (field === 'durationMinutes') {
-        (newAlliedHealthNeeds[index] as any)[field] = parseInt(value,10) || 0;
-    }
-    if (field === 'frequencyPerWeek') {
-        (newAlliedHealthNeeds[index]as any)[field] = parseInt(value,10) || 0;
-    }
     handleInputChange('alliedHealthNeeds', newAlliedHealthNeeds);
   };
 
+  const toggleAlliedHealthDay = (index: number, day: DayOfWeek) => {
+    const need = formData.alliedHealthNeeds[index];
+    const newDays = need.specificDays.includes(day)
+      ? need.specificDays.filter(d => d !== day)
+      : [...need.specificDays, day];
+    handleAlliedHealthChange(index, 'specificDays', newDays);
+  };
+
   const addAlliedHealthNeed = () => {
-    const newNeed: AlliedHealthNeed = { type: 'OT', frequencyPerWeek: 1, durationMinutes: 30 };
+    const newNeed: AlliedHealthNeed = {
+      type: 'OT',
+      specificDays: [],
+      startTime: '14:00',
+      endTime: '14:30'
+    };
     handleInputChange('alliedHealthNeeds', [...formData.alliedHealthNeeds, newNeed]);
   };
 
@@ -128,36 +135,46 @@ const ClientForm: React.FC<ClientFormProps> = ({ client, availableTeams, availab
 
         <div className="space-y-3">
           {formData.alliedHealthNeeds.map((need, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center p-4 bg-slate-50/50 border border-slate-100 rounded-2xl">
-              <div className="md:col-span-3">
-                <select value={need.type} onChange={(e) => handleAlliedHealthChange(index, 'type', e.target.value as AlliedHealthServiceType)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none"> {ALL_ALLIED_HEALTH_SERVICES.map(type => <option key={type} value={type}>{type}</option>)} </select>
-              </div>
-              <div className="md:col-span-2">
-                <input type="number" placeholder="Freq/Week" value={need.frequencyPerWeek} onChange={(e) => handleAlliedHealthChange(index, 'frequencyPerWeek', e.target.value)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none" min="0"/>
-              </div>
-              <div className="md:col-span-2">
-                <input type="number" placeholder="Mins/Session" value={need.durationMinutes} onChange={(e) => handleAlliedHealthChange(index, 'durationMinutes', e.target.value)} className="w-full bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none" min="15" step="15"/>
-              </div>
-              <div className="md:col-span-4 flex space-x-2">
-                  <select
-                      value={need.preferredTimeSlot?.startTime || ""}
-                      onChange={(e) => handleAlliedHealthChange(index, 'preferredTimeSlot', { ...need.preferredTimeSlot, startTime: e.target.value || COMPANY_OPERATING_HOURS_START })}
-                      className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
-                  >
-                      <option value="">Start</option>
-                      {TIME_SLOTS_H_MM.map(time => <option key={`pref-start-${time}`} value={time}>{time}</option>)}
+            <div key={index} className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-shrink-0">
+                  <select value={need.type} onChange={(e) => handleAlliedHealthChange(index, 'type', e.target.value as AlliedHealthServiceType)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                    {ALL_ALLIED_HEALTH_SERVICES.map(type => <option key={type} value={type}>{type}</option>)}
                   </select>
-                  <select
-                      value={need.preferredTimeSlot?.endTime || ""}
-                      onChange={(e) => handleAlliedHealthChange(index, 'preferredTimeSlot', { ...need.preferredTimeSlot, endTime: e.target.value || COMPANY_OPERATING_HOURS_END })}
-                      className="w-full bg-white border border-slate-100 rounded-xl px-2 py-2 text-xs focus:ring-2 focus:ring-brand-blue/20 outline-none"
-                  >
-                        <option value="">End</option>
-                      {TIME_SLOTS_H_MM.map(time => <option key={`pref-end-${time}`} value={time}>{time}</option>)}
+                </div>
+                <div className="flex items-center gap-2">
+                  <select value={need.startTime} onChange={(e) => handleAlliedHealthChange(index, 'startTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                    <option value="">Start</option>
+                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-start-${index}-${time}`} value={time}>{time}</option>)}
                   </select>
+                  <span className="text-slate-400">—</span>
+                  <select value={need.endTime} onChange={(e) => handleAlliedHealthChange(index, 'endTime', e.target.value)} className="bg-white border border-slate-100 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none">
+                    <option value="">End</option>
+                    {TIME_SLOTS_H_MM.filter(t => t >= COMPANY_OPERATING_HOURS_START && t <= COMPANY_OPERATING_HOURS_END).map(time => <option key={`ah-end-${index}-${time}`} value={time}>{time}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => removeAlliedHealthNeed(index)} className="flex-shrink-0 text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl" aria-label="Remove Allied Health Need">
+                  <TrashIcon className="w-4 h-4" />
+                </button>
               </div>
-              <div className="md:col-span-1 flex justify-end">
-                <button onClick={() => removeAlliedHealthNeed(index)} className="text-slate-300 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-xl" aria-label="Remove Allied Health Need"> <TrashIcon className="w-4 h-4" /> </button>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Days of Week</p>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS_OF_WEEK.map(day => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleAlliedHealthDay(index, day)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        need.specificDays.includes(day)
+                          ? 'bg-brand-blue text-white shadow-sm'
+                          : 'bg-white text-slate-500 border border-slate-100 hover:border-slate-200'
+                      }`}
+                    >
+                      {day.substring(0, 3)}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ))}
