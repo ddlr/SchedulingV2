@@ -77,6 +77,7 @@ const AdminSettingsPanel: React.FC<AdminSettingsPanelProps> = ({
     <ul class="list-disc list-inside space-y-1 text-sm">
       <li><strong>ACTION:</strong> (Required) Must be <code>ADD_UPDATE</code> or <code>REMOVE</code>.</li>
       <li><strong>name:</strong> (Required for <code>ADD_UPDATE</code>, used as identifier for <code>REMOVE</code>) Staff member's full name. Must be unique for reliable <code>REMOVE</code>.</li>
+      <li><strong>role:</strong> (Optional for <code>ADD_UPDATE</code>) Primary role. Valid values: <code>BCBA</code>, <code>CF</code>, <code>STAR 3</code>, <code>STAR 2</code>, <code>STAR 1</code>, <code>RBT</code>, <code>BT</code>, <code>OT</code>, <code>SLP</code>, <code>Other</code>.</li>
       <li><strong>teamName:</strong> (Optional for <code>ADD_UPDATE</code>) Name of the team. Assignment logic similar to clients.</li>
       <li><strong>qualifications:</strong> (Optional for <code>ADD_UPDATE</code>) Semicolon-separated list (e.g., "RBT;CPR Certified"). New qualifications added to Settings.</li>
     </ul>

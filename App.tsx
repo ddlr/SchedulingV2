@@ -25,6 +25,7 @@ import { SparklesIcon } from './components/icons/SparklesIcon';
 import { ChevronDownIcon } from './components/icons/ChevronDownIcon';
 import ScheduleRatingPanel from './components/ScheduleRatingPanel';
 import { useAuth } from './contexts/AuthContext';
+import * as XLSX from 'xlsx';
 
 import * as clientService from './services/clientService';
 import * as therapistService from './services/therapistService';
@@ -532,36 +533,92 @@ const App: React.FC = () => {
 
 
   const handleBulkUpdateClients = async (file: File, action: 'ADD_UPDATE' | 'REMOVE'): Promise<BulkOperationSummary> => {
-    setLoadingState({active: true, message: "Processing client CSV..."}); setBulkOperationSummary(null); setError(null);
+    setLoadingState({active: true, message: "Processing client file..."}); setBulkOperationSummary(null); setError(null);
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { insuranceRequirements: [] }};
     try {
-        const text = await file.text();
-        const rows = text.split('\n').map(row => row.trim()).filter(row => row);
-        if (rows.length <= 1) throw new Error("CSV file is empty or has only a header row.");
-        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-        summary.processedRows = rows.length - 1;
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as any[];
+
+        if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
+
+        summary.processedRows = jsonData.length;
         const clientsToProcess: Partial<Client>[] = [];
         const clientNamesToRemove: string[] = [];
         const newInsuranceRequirementsFound = new Set<string>();
-        for (let i = 1; i < rows.length; i++) {
-            const values = rows[i].split(',');
-            const rowData: Record<string, string> = headers.reduce((obj, header, index) => { obj[header] = values[index]?.trim() || ''; return obj; }, {} as Record<string, string>);
-            if (!rowData.action || (rowData.action.toUpperCase() !== 'ADD_UPDATE' && rowData.action.toUpperCase() !== 'REMOVE')) { summary.errors.push({ rowNumber: i + 1, message: "Missing or invalid ACTION column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (!rowData.name) { summary.errors.push({ rowNumber: i + 1, message: "Missing 'name' column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (rowData.action.toUpperCase() === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
-                const clientTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
-                let insuranceReqs: string[] | undefined = rowData.insurancerequirements !== undefined ? (rowData.insurancerequirements ? rowData.insurancerequirements.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
-                if(insuranceReqs) insuranceReqs.forEach(req => newInsuranceRequirementsFound.add(req));
-                let ahNeeds: AlliedHealthNeed[] | undefined = rowData.alliedhealthneeds !== undefined ? (rowData.alliedhealthneeds ? rowData.alliedhealthneeds.split(';').map(needStr => { const [type, daysStr, timeStr] = needStr.split(':').map(s => s.trim()); if (!(type === 'OT' || type === 'SLP') || !daysStr || !timeStr) return null; const days = daysStr.split(',').map(d => d.trim() as DayOfWeek).filter(d => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(d)); const [startTime, endTime] = timeStr.split('-').map(t => t.trim()); return days.length > 0 && startTime && endTime ? { type, specificDays: days, startTime, endTime } as AlliedHealthNeed : null; }).filter(n => n) as AlliedHealthNeed[] : []) : undefined;
-                const partialClient: Partial<Client> = { name: rowData.name };
-                if (clientTeam !== undefined || rowData.teamname !== undefined) partialClient.teamId = clientTeam?.id;
+
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            // Normalize keys to lowercase for flexible header matching
+            const rowData: Record<string, any> = {};
+            Object.keys(row).forEach(key => {
+                rowData[key.trim().toLowerCase()] = row[key];
+            });
+
+            const rowAction = rowData.action?.toString().trim().toUpperCase();
+            const name = rowData.name?.toString().trim();
+
+            if (!rowAction || (rowAction !== 'ADD_UPDATE' && rowAction !== 'REMOVE')) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing or invalid ACTION column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+            if (!name) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing 'name' column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+
+            if (rowAction === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
+                const teamName = rowData.teamname?.toString().trim();
+                const clientTeam = teamName ? availableTeams.find(t => t.name.toLowerCase() === teamName.toLowerCase()) : undefined;
+
+                let insuranceReqs: string[] | undefined = undefined;
+                if (rowData.insurancerequirements !== undefined) {
+                    insuranceReqs = rowData.insurancerequirements.toString().split(';').map((s: string) => s.trim()).filter((s: string) => s);
+                    insuranceReqs.forEach(req => newInsuranceRequirementsFound.add(req));
+                }
+
+                let ahNeeds: AlliedHealthNeed[] | undefined = undefined;
+                if (rowData.alliedhealthneeds !== undefined) {
+                    ahNeeds = rowData.alliedhealthneeds.toString().split(';').map((needStr: string) => {
+                        const parts = needStr.split(':').map(s => s.trim());
+                        if (parts.length < 3) return null;
+                        const type = parts[0].toUpperCase() as 'OT' | 'SLP';
+                        if (type !== 'OT' && type !== 'SLP') return null;
+                        const days = parts[1].split(',').map(d => d.trim() as DayOfWeek).filter(d => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(d));
+                        const timeRange = parts[2].split('-').map(t => t.trim());
+                        if (timeRange.length < 2) return null;
+                        const [startTime, endTime] = timeRange;
+                        return (days.length > 0 && startTime && endTime) ? { type, specificDays: days, startTime, endTime } as AlliedHealthNeed : null;
+                    }).filter((n: any) => n !== null);
+                }
+
+                const partialClient: Partial<Client> = { name };
+                if (clientTeam) partialClient.teamId = clientTeam.id;
+                else if (teamName) partialClient.teamId = undefined; // Explicitly set to unassigned if team name provided but not found
+
                 if (insuranceReqs !== undefined) partialClient.insuranceRequirements = insuranceReqs;
                 if (ahNeeds !== undefined) partialClient.alliedHealthNeeds = ahNeeds;
                 clientsToProcess.push(partialClient);
-            } else if (rowData.action.toUpperCase() === 'REMOVE' && action === 'REMOVE') clientNamesToRemove.push(rowData.name);
+            } else if (rowAction === 'REMOVE' && action === 'REMOVE') {
+                clientNamesToRemove.push(name);
+            }
         }
-        if (action === 'ADD_UPDATE' && clientsToProcess.length > 0) { const result = await clientService.addOrUpdateBulkClients(clientsToProcess); summary.addedCount = result.addedCount; summary.updatedCount = result.updatedCount; }
-        else if (action === 'REMOVE' && clientNamesToRemove.length > 0) { const result = await clientService.removeClientsByNames(clientNamesToRemove); summary.removedCount = result.removedCount; }
+
+        if (action === 'ADD_UPDATE' && clientsToProcess.length > 0) {
+            const result = await clientService.addOrUpdateBulkClients(clientsToProcess);
+            summary.addedCount = result.addedCount;
+            summary.updatedCount = result.updatedCount;
+            if (result.errors && result.errors.length > 0) {
+                result.errors.forEach(err => {
+                    summary.errors.push({ rowNumber: 0, message: err });
+                    summary.errorCount++;
+                });
+            }
+        } else if (action === 'REMOVE' && clientNamesToRemove.length > 0) {
+            const result = await clientService.removeClientsByNames(clientNamesToRemove);
+            summary.removedCount = result.removedCount;
+        }
         const currentIQs = settingsService.getInsuranceQualifications();
         const currentIQNames = currentIQs.map(q => q.id);
         const newIQNames = Array.from(newInsuranceRequirementsFound).filter(name => !currentIQNames.includes(name));
@@ -576,35 +633,76 @@ const App: React.FC = () => {
   };
 
   const handleBulkUpdateTherapists = async (file: File, action: 'ADD_UPDATE' | 'REMOVE'): Promise<BulkOperationSummary> => {
-    setLoadingState({active: true, message: "Processing therapist CSV..."}); setBulkOperationSummary(null); setError(null);
+    setLoadingState({active: true, message: "Processing staff file..."}); setBulkOperationSummary(null); setError(null);
     let summary: BulkOperationSummary = { processedRows: 0, addedCount: 0, updatedCount: 0, removedCount: 0, errorCount: 0, errors: [], newlyAddedSettings: { qualifications: [] } };
     try {
-        const text = await file.text();
-        const rows = text.split('\n').map(row => row.trim()).filter(row => row);
-        if (rows.length <= 1) throw new Error("CSV file is empty or has only a header row.");
-        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-        summary.processedRows = rows.length - 1;
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as any[];
+
+        if (jsonData.length === 0) throw new Error("File is empty or has no data rows.");
+
+        summary.processedRows = jsonData.length;
         const therapistsToProcess: Partial<Therapist>[] = [];
         const therapistNamesToRemove: string[] = [];
         const newQualificationsFound = new Set<string>();
-        for (let i = 1; i < rows.length; i++) {
-            const values = rows[i].split(',');
-            const rowData: Record<string, string> = headers.reduce((obj, header, index) => { obj[header] = values[index]?.trim() || ''; return obj; }, {} as Record<string, string>);
-            if (!rowData.action || (rowData.action.toUpperCase() !== 'ADD_UPDATE' && rowData.action.toUpperCase() !== 'REMOVE')) { summary.errors.push({ rowNumber: i + 1, message: "Missing or invalid ACTION column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (!rowData.name) { summary.errors.push({ rowNumber: i + 1, message: "Missing 'name' column.", rowData: rows[i] }); summary.errorCount++; continue; }
-            if (rowData.action.toUpperCase() === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
-                const therapistTeam = availableTeams.find(t => t.name.toLowerCase() === rowData.teamname?.toLowerCase());
-                let qualifications: string[] | undefined = rowData.qualifications !== undefined ? (rowData.qualifications ? rowData.qualifications.split(';').map(s => s.trim()).filter(s => s) : []) : undefined;
-                if(qualifications) qualifications.forEach(q => newQualificationsFound.add(q));
-                const partialTherapist: Partial<Therapist> = { name: rowData.name };
-                if (rowData.role) partialTherapist.role = rowData.role as TherapistRole;
-                if (therapistTeam !== undefined || rowData.teamname !== undefined) partialTherapist.teamId = therapistTeam?.id;
+
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            const rowData: Record<string, any> = {};
+            Object.keys(row).forEach(key => {
+                rowData[key.trim().toLowerCase()] = row[key];
+            });
+
+            const rowAction = rowData.action?.toString().trim().toUpperCase();
+            const name = rowData.name?.toString().trim();
+
+            if (!rowAction || (rowAction !== 'ADD_UPDATE' && rowAction !== 'REMOVE')) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing or invalid ACTION column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+            if (!name) {
+                summary.errors.push({ rowNumber: i + 2, message: "Missing 'name' column.", rowData: JSON.stringify(row).substring(0, 100) });
+                summary.errorCount++; continue;
+            }
+
+            if (rowAction === 'ADD_UPDATE' && action === 'ADD_UPDATE') {
+                const teamName = rowData.teamname?.toString().trim();
+                const therapistTeam = teamName ? availableTeams.find(t => t.name.toLowerCase() === teamName.toLowerCase()) : undefined;
+
+                let qualifications: string[] | undefined = undefined;
+                if (rowData.qualifications !== undefined) {
+                    qualifications = rowData.qualifications.toString().split(';').map((s: string) => s.trim()).filter((s: string) => s);
+                    qualifications.forEach(q => newQualificationsFound.add(q));
+                }
+
+                const partialTherapist: Partial<Therapist> = { name };
+                if (rowData.role) partialTherapist.role = rowData.role.toString().trim() as TherapistRole;
+                if (therapistTeam) partialTherapist.teamId = therapistTeam.id;
+                else if (teamName) partialTherapist.teamId = undefined;
+
                 if (qualifications !== undefined) partialTherapist.qualifications = qualifications;
                 therapistsToProcess.push(partialTherapist);
-            } else if (rowData.action.toUpperCase() === 'REMOVE' && action === 'REMOVE') therapistNamesToRemove.push(rowData.name);
+            } else if (rowAction === 'REMOVE' && action === 'REMOVE') {
+                therapistNamesToRemove.push(name);
+            }
         }
-        if (action === 'ADD_UPDATE' && therapistsToProcess.length > 0) { const result = await therapistService.addOrUpdateBulkTherapists(therapistsToProcess); summary.addedCount = result.addedCount; summary.updatedCount = result.updatedCount; }
-        else if (action === 'REMOVE' && therapistNamesToRemove.length > 0) { const result = await therapistService.removeTherapistsByNames(therapistNamesToRemove); summary.removedCount = result.removedCount; }
+
+        if (action === 'ADD_UPDATE' && therapistsToProcess.length > 0) {
+            const result = await therapistService.addOrUpdateBulkTherapists(therapistsToProcess);
+            summary.addedCount = result.addedCount;
+            summary.updatedCount = result.updatedCount;
+            if (result.errors && result.errors.length > 0) {
+                result.errors.forEach(err => {
+                    summary.errors.push({ rowNumber: 0, message: err });
+                    summary.errorCount++;
+                });
+            }
+        } else if (action === 'REMOVE' && therapistNamesToRemove.length > 0) {
+            const result = await therapistService.removeTherapistsByNames(therapistNamesToRemove);
+            summary.removedCount = result.removedCount;
+        }
         const currentIQs = settingsService.getInsuranceQualifications();
         const currentIQNames = currentIQs.map(q => q.id);
         const newIQNames = Array.from(newQualificationsFound).filter(name => !currentIQNames.includes(name));

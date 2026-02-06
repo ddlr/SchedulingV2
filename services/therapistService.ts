@@ -122,19 +122,22 @@ export const removeTherapist = async (therapistId: string): Promise<boolean> => 
   }
 };
 
-export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Therapist>[]): Promise<{ addedCount: number; updatedCount: number }> => {
+export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<Therapist>[]): Promise<{ addedCount: number; updatedCount: number; errors: string[] }> => {
   let addedCount = 0;
   let updatedCount = 0;
+  const errors: string[] = [];
 
   for (const therapistData of therapistsToProcess) {
     if (!therapistData.name) continue;
 
     try {
-      const { data: existing } = await supabase
+      const { data: existing, error: findError } = await supabase
         .from('therapists')
         .select('id')
         .ilike('name', therapistData.name)
         .maybeSingle();
+
+      if (findError) throw findError;
 
       if (existing) {
         const updateData: any = { updated_at: new Date().toISOString() };
@@ -142,31 +145,36 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<The
         if (therapistData.teamId !== undefined) updateData.team_id = therapistData.teamId || null;
         if (therapistData.qualifications !== undefined) updateData.qualifications = therapistData.qualifications;
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('therapists')
           .update(updateData)
           .eq('id', existing.id);
 
+        if (updateError) throw updateError;
         updatedCount++;
       } else {
-        await supabase
+        const { error: insertError } = await supabase
           .from('therapists')
           .insert({
+            id: crypto.randomUUID(),
             name: therapistData.name,
             role: therapistData.role || "BT",
             team_id: therapistData.teamId || null,
             qualifications: therapistData.qualifications || []
           });
 
+        if (insertError) throw insertError;
         addedCount++;
       }
-    } catch (error) {
-      console.error("Error processing therapist:", therapistData.name, error);
+    } catch (error: any) {
+      const msg = `Error processing staff "${therapistData.name}": ${error.message || 'Unknown error'}`;
+      console.error(msg, error);
+      errors.push(msg);
     }
   }
 
   await loadTherapists();
-  return { addedCount, updatedCount };
+  return { addedCount, updatedCount, errors };
 };
 
 export const removeTherapistsByNames = async (therapistNamesToRemove: string[]): Promise<{ removedCount: number }> => {
