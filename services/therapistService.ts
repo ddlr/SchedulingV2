@@ -201,6 +201,8 @@ export const removeTherapistsByNames = async (therapistNamesToRemove: string[]):
 export const subscribeToTherapists = (listener: (therapists: Therapist[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._therapists]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadTherapists();
 
   return () => {
     const index = listeners.indexOf(listener);

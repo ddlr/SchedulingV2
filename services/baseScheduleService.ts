@@ -101,6 +101,8 @@ export const updateBaseSchedules = async (updatedSchedules: BaseScheduleConfig[]
 export const subscribeToBaseSchedules = (listener: (schedules: BaseScheduleConfig[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._baseSchedules.map(bs => ({ ...bs, schedule: ensureEntryIds(bs.schedule) }))]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadBaseSchedules();
 
   return () => {
     const index = listeners.indexOf(listener);

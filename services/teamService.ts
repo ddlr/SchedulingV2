@@ -89,6 +89,8 @@ export const updateTeams = async (updatedTeams: Team[]): Promise<Team[]> => {
 export const subscribeToTeams = (listener: (teams: Team[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._teams]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadTeams();
 
   return () => {
     const index = listeners.indexOf(listener);

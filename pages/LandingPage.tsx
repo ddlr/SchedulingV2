@@ -19,7 +19,7 @@ const LandingPage: React.FC = () => {
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <SparklesIcon className="w-6 h-6 text-slate-900" />
-                <span className="text-lg font-bold text-slate-900">Fiddler Scheduler</span>
+                <span className="text-lg font-bold text-slate-900">Ordus ABA</span>
               </div>
               <span className="text-xs text-slate-600 ml-8">Smarter scheduling for ABA operations</span>
             </div>
@@ -59,7 +59,7 @@ const LandingPage: React.FC = () => {
               <span className="text-blue-600">in under 1 minute.</span>
             </h1>
             <p className="text-xl text-slate-600 mb-8 leading-relaxed max-w-2xl">
-              Fiddler Scheduler is a credential-aware workspace for ABA operations. Ensure the right staff always matches the right insurance rules, anywhere in the country.
+              Ordus ABA is a credential-aware workspace for ABA operations. Ensure the right staff always matches the right insurance rules, anywhere in the country.
             </p>
             <div className="max-w-xl">
               <EmailCaptureForm source="hero_section" />
@@ -273,7 +273,7 @@ const LandingPage: React.FC = () => {
           <div className="flex flex-col items-center justify-center">
             <div className="flex items-center gap-2 mb-2">
               <SparklesIcon className="w-5 h-5 text-slate-700" />
-              <span className="text-base font-bold text-slate-900">Fiddler Scheduler</span>
+              <span className="text-base font-bold text-slate-900">Ordus ABA</span>
             </div>
             <p className="text-slate-600 text-sm">
               Smarter scheduling for ABA operations

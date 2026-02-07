@@ -53,7 +53,7 @@ const LoginPage: React.FC = () => {
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <SparklesIcon className="w-8 h-8 text-blue-400" />
-              <span className="text-xl font-bold text-white">Fiddler Scheduler</span>
+              <span className="text-xl font-bold text-white">Ordus ABA</span>
             </button>
           </div>
         </div>
@@ -67,7 +67,7 @@ const LoginPage: React.FC = () => {
                 <SparklesIcon className="w-8 h-8 text-blue-400" />
               </div>
               <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-              <p className="text-slate-400">Sign in to your Fiddler Scheduler account</p>
+              <p className="text-slate-400">Sign in to your Ordus ABA account</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
