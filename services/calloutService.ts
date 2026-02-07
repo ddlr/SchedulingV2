@@ -57,9 +57,11 @@ export const getCallouts = (): Callout[] => {
 
 export const addCalloutEntry = async (newCallout: Omit<Callout, 'id'>): Promise<Callout[]> => {
   try {
+    const id = `callout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { error } = await supabase
       .from('callouts')
       .insert({
+        id,
         entity_type: newCallout.entityType,
         entity_id: newCallout.entityId,
         entity_name: newCallout.entityName,
