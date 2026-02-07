@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { GeneratedSchedule, DayOfWeek, ScheduleEntry, Therapist, SessionType, Team, ScheduleViewProps, Client } from '../types';
 import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
 import { UserGroupIcon } from './icons/UserGroupIcon';
@@ -171,6 +171,17 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
     );
   }
 
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+
+  const toggleTeamCollapse = (teamId: string) => {
+    setCollapsedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId);
+      else next.add(teamId);
+      return next;
+    });
+  };
+
   // Build a lookup: for each therapist, which entries and at which slot indices
   const therapistEntries = useMemo(() => {
     const map = new Map<string, { entry: ScheduleEntry; startSlot: number; colSpan: number }[]>();
@@ -294,100 +305,110 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
             <tbody>
               {orderedTherapists.map(({ therapist, teamId, teamName, teamColor }) => {
                 const entries = therapistEntries.get(therapist.id) || [];
-                // Set of slot indices that are covered by a session
                 const coveredSlots = new Set<number>();
                 entries.forEach(({ startSlot, colSpan }) => {
                   for (let s = startSlot; s < startSlot + colSpan; s++) coveredSlots.add(s);
                 });
 
-                // Check if we need to render a team separator
                 const showTeamHeader = teamId !== lastTeamId;
                 lastTeamId = teamId;
+                const isCollapsed = collapsedTeams.has(teamId);
+                const staffCount = teamsData[teamId].therapists.length;
 
                 return (
                   <React.Fragment key={therapist.id}>
-                    {/* Team separator row */}
+                    {/* Team separator row with collapse toggle */}
                     {showTeamHeader && (
                       <tr>
                         <td
                           colSpan={displayTimeSlots.length + 1}
-                          className="sticky left-0 z-20 px-4 py-1.5 border-b border-slate-100"
+                          className="sticky left-0 z-20 border-b border-slate-100 cursor-pointer select-none"
                           style={{ backgroundColor: teamColor + '18' }}
+                          onClick={() => toggleTeamCollapse(teamId)}
                         >
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: teamColor === '#E2E8F0' ? '#94A3B8' : teamColor }}>
-                            {teamName}
-                          </span>
+                          <div className="flex items-center gap-2 px-4 py-1.5">
+                            <svg
+                              className={`w-3.5 h-3.5 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}
+                              style={{ color: teamColor === '#E2E8F0' ? '#94A3B8' : teamColor }}
+                              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: teamColor === '#E2E8F0' ? '#94A3B8' : teamColor }}>
+                              {teamName}
+                            </span>
+                            <span className="text-[10px] font-medium text-slate-400">
+                              ({staffCount} staff)
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     )}
 
-                    {/* Staff row */}
-                    <tr className="group/row hover:bg-slate-50/30 transition-colors">
-                      {/* Staff name cell - sticky left */}
-                      <td className="sticky left-0 z-20 bg-white group-hover/row:bg-slate-50/80 border-b border-r border-slate-100 px-4 py-2 transition-colors" style={{ minWidth: '200px' }}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-1 h-8 rounded-full" style={{ backgroundColor: teamColor }}></div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-700 truncate">{therapist.name}</div>
-                            <div className="text-[10px] text-slate-400 font-medium">{therapist.role}</div>
+                    {/* Staff row - hidden when team is collapsed */}
+                    {!isCollapsed && (
+                      <tr className="group/row hover:bg-slate-50/30 transition-colors">
+                        <td className="sticky left-0 z-20 bg-white group-hover/row:bg-slate-50/80 border-b border-r border-slate-100 px-4 py-2 transition-colors" style={{ minWidth: '200px' }}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-1 h-8 rounded-full" style={{ backgroundColor: teamColor }}></div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-700 truncate">{therapist.name}</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{therapist.role}</div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Time slot cells */}
-                      {displayTimeSlots.map((slot, slotIdx) => {
-                        // Check if a session starts at this slot
-                        const entryData = entries.find(e => e.startSlot === slotIdx);
-                        if (entryData) {
-                          const { entry, colSpan } = entryData;
-                          const styling = getSessionStyling(entry.sessionType, entry.clientId, clients, allClientIds);
+                        {displayTimeSlots.map((slot, slotIdx) => {
+                          const entryData = entries.find(e => e.startSlot === slotIdx);
+                          if (entryData) {
+                            const { entry, colSpan } = entryData;
+                            const styling = getSessionStyling(entry.sessionType, entry.clientId, clients, allClientIds);
+                            return (
+                              <td
+                                key={entry.id}
+                                colSpan={colSpan}
+                                className={`border-b border-slate-50 p-0.5 ${canEdit ? 'cursor-pointer' : ''}`}
+                                draggable={canEdit ? true : false}
+                                onDragStart={canEdit ? (e) => handleDragStart(e, entry) : undefined}
+                                onDragEnd={canEdit ? handleDragEnd : undefined}
+                                onClick={canEdit ? () => onOpenEditSessionModal(entry) : undefined}
+                                title={canEdit ? `Click to edit: ${entry.clientName || styling.display} (${to12HourTime(entry.startTime)} - ${to12HourTime(entry.endTime)})` : `${entry.clientName || styling.display}`}
+                              >
+                                <div
+                                  className="h-9 rounded-lg border flex items-center px-2 gap-1 overflow-hidden transition-all hover:shadow-md hover:brightness-95"
+                                  style={styling.style || { backgroundColor: styling.bgColor, color: styling.textColor, borderColor: styling.borderColor }}
+                                >
+                                  <span className="text-[11px] font-bold truncate">{entry.clientName || styling.display}</span>
+                                  {colSpan >= 4 && (
+                                    <span className="text-[9px] opacity-70 font-semibold whitespace-nowrap ml-auto">
+                                      {to12HourTime(entry.startTime).replace(' ', '')}–{to12HourTime(entry.endTime).replace(' ', '')}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          if (coveredSlots.has(slotIdx)) return null;
+
+                          const isHourBoundary = timeToMinutes(slot) % 60 === 0;
                           return (
                             <td
-                              key={entry.id}
-                              colSpan={colSpan}
-                              className={`border-b border-slate-50 p-0.5 ${canEdit ? 'cursor-pointer' : ''}`}
-                              draggable={canEdit ? true : false}
-                              onDragStart={canEdit ? (e) => handleDragStart(e, entry) : undefined}
-                              onDragEnd={canEdit ? handleDragEnd : undefined}
-                              onClick={canEdit ? () => onOpenEditSessionModal(entry) : undefined}
-                              title={canEdit ? `Click to edit: ${entry.clientName || styling.display} (${to12HourTime(entry.startTime)} - ${to12HourTime(entry.endTime)})` : `${entry.clientName || styling.display}`}
+                              key={`${therapist.id}-${slot}`}
+                              className={`border-b border-slate-50 p-0.5 transition-colors ${isHourBoundary ? 'border-l border-l-slate-100' : 'border-l border-l-slate-50'} ${canEdit ? 'hover:bg-sky-50 cursor-pointer' : ''}`}
+                              style={{ minWidth: '36px' }}
+                              onDragOver={canEdit ? handleDragOver : undefined}
+                              onDragLeave={canEdit ? handleDragLeave : undefined}
+                              onDrop={canEdit ? (e) => handleDrop(e, therapist.id, slot) : undefined}
+                              onClick={canEdit ? () => onOpenAddSessionModal(therapist.id, therapist.name, slot, scheduledDayOfWeek) : undefined}
+                              title={canEdit ? `Add session for ${therapist.name} at ${to12HourTime(slot)}` : undefined}
                             >
-                              <div
-                                className="h-9 rounded-lg border flex items-center px-2 gap-1 overflow-hidden transition-all hover:shadow-md hover:brightness-95"
-                                style={styling.style || { backgroundColor: styling.bgColor, color: styling.textColor, borderColor: styling.borderColor }}
-                              >
-                                <span className="text-[11px] font-bold truncate">{entry.clientName || styling.display}</span>
-                                {colSpan >= 4 && (
-                                  <span className="text-[9px] opacity-70 font-semibold whitespace-nowrap ml-auto">
-                                    {to12HourTime(entry.startTime).replace(' ', '')}–{to12HourTime(entry.endTime).replace(' ', '')}
-                                  </span>
-                                )}
-                              </div>
+                              <div className="h-9"></div>
                             </td>
                           );
-                        }
-
-                        // Skip slots that are covered by a previous session's colSpan
-                        if (coveredSlots.has(slotIdx)) return null;
-
-                        // Empty slot
-                        const isHourBoundary = timeToMinutes(slot) % 60 === 0;
-                        return (
-                          <td
-                            key={`${therapist.id}-${slot}`}
-                            className={`border-b border-slate-50 p-0.5 transition-colors ${isHourBoundary ? 'border-l border-l-slate-100' : 'border-l border-l-slate-50'} ${canEdit ? 'hover:bg-sky-50 cursor-pointer' : ''}`}
-                            style={{ minWidth: '36px' }}
-                            onDragOver={canEdit ? handleDragOver : undefined}
-                            onDragLeave={canEdit ? handleDragLeave : undefined}
-                            onDrop={canEdit ? (e) => handleDrop(e, therapist.id, slot) : undefined}
-                            onClick={canEdit ? () => onOpenAddSessionModal(therapist.id, therapist.name, slot, scheduledDayOfWeek) : undefined}
-                            title={canEdit ? `Add session for ${therapist.name} at ${to12HourTime(slot)}` : undefined}
-                          >
-                            <div className="h-9"></div>
-                          </td>
-                        );
-                      })}
-                    </tr>
+                        })}
+                      </tr>
+                    )}
                   </React.Fragment>
                 );
               })}
