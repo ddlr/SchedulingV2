@@ -286,18 +286,47 @@ export class FastScheduler {
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Already working with this client (Medicaid limit safety)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                        const clientTeamId = target.c.teamId;
+                        const aOnTeam = !!(clientTeamId && a.t.teamId === clientTeamId);
+                        const bOnTeam = !!(clientTeamId && b.t.teamId === clientTeamId);
 
-                        // Priority 2: Role rank (BT/RBT first for billable work)
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
+                        // Priority 1: Same team as client
+                        if (aOnTeam !== bOnTeam) return aOnTeam ? -1 : 1;
 
-                        // Priority 3: Current session count (even distribution among same-tier roles)
-                        return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                        if (aOnTeam) {
+                            // Both on same team as client:
+                            // Sub-priority 1: Already working with this client (Medicaid limit safety)
+                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                            if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+
+                            // Sub-priority 2: Lower rank first (preserve senior staff time)
+                            const aRank = this.getRoleRank(a.t.role);
+                            const bRank = this.getRoleRank(b.t.role);
+                            if (aRank !== bRank) return aRank - bRank;
+
+                            // Sub-priority 3: Even distribution
+                            return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                        } else {
+                            // Both off-team (or client has no team):
+                            // Sub-priority 1: CF role first (preferred off-team fallback)
+                            const aIsCF = a.t.role === 'CF';
+                            const bIsCF = b.t.role === 'CF';
+                            if (aIsCF !== bIsCF) return aIsCF ? -1 : 1;
+
+                            // Sub-priority 2: Already working with this client (experience)
+                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                            if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+
+                            // Sub-priority 3: Higher rank first for off-team (STAR 3 > STAR 2 > STAR 1 > ...)
+                            const aRank = this.getRoleRank(a.t.role);
+                            const bRank = this.getRoleRank(b.t.role);
+                            if (aRank !== bRank) return bRank - aRank;
+
+                            // Sub-priority 4: Even distribution
+                            return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                        }
                     });
 
                     for (const q of quals) {
@@ -441,6 +470,19 @@ export class FastScheduler {
                 }
             }
         }
+
+        // Team alignment penalty: penalize off-team ABA assignments
+        s.forEach(e => {
+            if (e.clientId && e.therapistId && e.sessionType === 'ABA') {
+                const client = this.clients.find(c => c.id === e.clientId);
+                const therapist = this.therapists.find(t => t.id === e.therapistId);
+                if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
+                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                    penalty += dur * 10; // Penalize each minute of off-team ABA coverage
+                }
+            }
+        });
+
         return penalty;
     }
 }
