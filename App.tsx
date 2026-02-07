@@ -86,13 +86,20 @@ const App: React.FC = () => {
   const [isModified, setIsModified] = useState(false);
   const [isPublished, setIsPublished] = useState(false);
 
-  const getCurrentDateString = () => new Date().toISOString().split('T')[0];
+  const getCurrentDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const toLocalISOString = (date: Date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
 
   const [calloutForm, setCalloutForm] = useState<CalloutFormValues>({
     entityType: 'client',
     entityId: '',
-    startDate: selectedDate ? selectedDate.toISOString().split('T')[0] : getCurrentDateString(),
-    endDate: selectedDate ? selectedDate.toISOString().split('T')[0] : getCurrentDateString(),
+    startDate: selectedDate ? toLocalISOString(selectedDate) : getCurrentDateString(),
+    endDate: selectedDate ? toLocalISOString(selectedDate) : getCurrentDateString(),
     startTime: '09:00',
     endTime: '17:00',
     reason: ''
@@ -116,7 +123,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (selectedDate) {
-        const dateString = selectedDate.toISOString().split('T')[0];
+        const dateString = toLocalISOString(selectedDate);
         setCalloutForm(prev => ({...prev, startDate: dateString, endDate: dateString}));
     } else {
         const todayString = getCurrentDateString();
@@ -148,7 +155,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (selectedDate) {
-      const dateString = selectedDate.toISOString().split('T')[0];
+      const dateString = toLocalISOString(selectedDate);
       const selectedDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
 
       const loadInitialSchedule = async () => {
@@ -190,7 +197,7 @@ const App: React.FC = () => {
 
   const handlePublishSchedule = async () => {
     if (!selectedDate || !schedule || !user) return;
-    const dateString = selectedDate.toISOString().split('T')[0];
+    const dateString = toLocalISOString(selectedDate);
     const dayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
 
     // Only save entries for the selected day
@@ -376,11 +383,14 @@ const App: React.FC = () => {
     });
   };
 
-  const handleAddCallout = (e: React.FormEvent) => {
+  const handleAddCallout = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
     let { entityType, entityId, startDate, endDate, startTime, endTime, reason } = calloutForm;
     if (!entityId || !startDate || !startTime || !endTime) { setError([{ruleId: "MISSING_CALLOUT_FIELDS", message: "Please fill in Entity, Start Date, Start Time, and End Time for the callout."}]); return; }
-    if (!endDate || new Date(endDate) < new Date(startDate)) endDate = startDate;
+
+    // Ensure endDate is at least startDate
+    if (!endDate || new Date(endDate + 'T00:00:00') < new Date(startDate + 'T00:00:00')) endDate = startDate;
+
     if (timeToMinutes(startTime) >= timeToMinutes(endTime)) { setError([{ruleId: "INVALID_CALLOUT_TIME_ORDER", message: "Callout end time must be after start time."}]); return; }
 
     const sourceList = entityType === 'client' ? clients : therapists;
@@ -388,8 +398,17 @@ const App: React.FC = () => {
 
     if (!entityName) { setError([{ruleId: "CALLOUT_ENTITY_NOT_FOUND", message: `Selected ${entityType} not found for callout.`}]); return; }
 
-    calloutService.addCalloutEntry({ entityType, entityId, entityName, startDate, endDate, startTime, endTime, reason });
-    setCalloutForm(prev => ({ ...prev, entityId: '', startTime: '09:00', endTime: '17:00', reason: '' }));
+    try {
+      setLoadingState({ active: true, message: 'Saving Callout...' });
+      await calloutService.addCalloutEntry({ entityType, entityId, entityName, startDate, endDate, startTime, endTime, reason });
+      setCalloutForm(prev => ({ ...prev, entityId: '', startTime: '09:00', endTime: '17:00', reason: '' }));
+      alert('Callout recorded successfully.');
+    } catch (err: any) {
+      console.error("Failed to add callout:", err);
+      setError([{ ruleId: "CALLOUT_SAVE_FAILED", message: `Failed to save callout: ${err.message || 'Unknown error'}` }]);
+    } finally {
+      setLoadingState({ active: false, message: '' });
+    }
   };
   const handleRemoveCallout = (calloutId: string) => calloutService.removeCalloutEntry(calloutId);
 

@@ -371,17 +371,22 @@ export class FastScheduler {
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
         let minScore = Infinity;
-        const iterations = this.clients.length > 15 ? 10000 : 5000;
+        // Reduced iterations to prevent crashes with large datasets
+        // 1000-2000 is usually plenty for this randomized greedy approach
+        const iterations = this.clients.length > 20 ? 1000 : 2000;
+
         for (let i = 0; i < iterations; i++) {
-            if (i > 0 && i % 500 === 0) await new Promise(r => setTimeout(r, 0));
+            // Yield to main thread more frequently for responsiveness
+            if (i > 0 && i % 100 === 0) await new Promise(r => setTimeout(r, 0));
+
             const s = this.createSchedule(initialSchedule);
             const score = this.calculateScore(s, initialSchedule);
+
             if (score < minScore) {
                 best = s;
                 minScore = score;
                 if (minScore === 0) break;
             }
-            // Dynamic adjustment: if we're halfway and still have gaps, maybe we need more randomness in Pass 2/3
         }
         return best;
     }

@@ -49,7 +49,9 @@ export const validateSessionEntry = (
   clients: Client[],
   therapists: Therapist[],
   insuranceQualifications: InsuranceQualification[],
-  originalEntryForEditId?: string | null
+  originalEntryForEditId?: string | null,
+  preFilteredTherapistSessions?: ScheduleEntry[],
+  preFilteredClientSessions?: ScheduleEntry[]
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
   const { clientId, clientName, therapistId, therapistName, day, startTime, endTime, sessionType } = entryToValidate;
@@ -98,23 +100,31 @@ export const validateSessionEntry = (
     }
   }
 
-  currentSchedule.forEach(existingEntry => {
+  // Optimization: use pre-filtered sessions if available to avoid O(N) loop over entire schedule
+  const therapistSessionsToCheck = preFilteredTherapistSessions ||
+    (therapistId ? currentSchedule.filter(e => e.therapistId === therapistId && e.day === day) : []);
+
+  const clientSessionsToCheck = preFilteredClientSessions ||
+    (clientId ? currentSchedule.filter(e => e.clientId === clientId && e.day === day) : []);
+
+  therapistSessionsToCheck.forEach(existingEntry => {
     if (originalEntryForEditId && existingEntry.id === originalEntryForEditId) return;
     if (existingEntry.id === entryToValidate.id && originalEntryForEditId !== entryToValidate.id) return; 
 
-    if (therapistId && existingEntry.therapistId === therapistId &&
-        existingEntry.day === day &&
-        sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
+    if (sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
           ruleId: "THERAPIST_TIME_CONFLICT",
           message: `Therapist ${therapistName} is already booked from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)} with ${existingEntry.clientName || 'Indirect Task'}.`,
           details: { entryId: entryToValidate.id, conflictingEntryId: existingEntry.id }
       });
     }
+  });
 
-    if (clientId && existingEntry.clientId === clientId &&
-        existingEntry.day === day &&
-        sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
+  clientSessionsToCheck.forEach(existingEntry => {
+    if (originalEntryForEditId && existingEntry.id === originalEntryForEditId) return;
+    if (existingEntry.id === entryToValidate.id && originalEntryForEditId !== entryToValidate.id) return;
+
+    if (sessionsOverlap(existingEntry.startTime, existingEntry.endTime, startTime, endTime)) {
       errors.push({
           ruleId: "CLIENT_TIME_CONFLICT",
           message: `Client ${clientName} is already scheduled with ${existingEntry.therapistName} from ${to12HourTime(existingEntry.startTime)}-${to12HourTime(existingEntry.endTime)}.`,
@@ -123,9 +133,7 @@ export const validateSessionEntry = (
     }
 
     // Check for back-to-back same client sessions (no break allowed)
-    if (therapistId && clientId && existingEntry.clientId === clientId &&
-        existingEntry.therapistId === therapistId &&
-        existingEntry.day === day &&
+    if (therapistId && existingEntry.therapistId === therapistId &&
         (existingEntry.endTime === startTime || existingEntry.startTime === endTime)) {
       errors.push({
           ruleId: "SAME_CLIENT_BACK_TO_BACK",
@@ -290,12 +298,40 @@ export const validateFullSchedule = (
   const currentDayOfWeekString = getDayOfWeekFromDateObject(selectedDate);
   const isWeekendDay = currentDayOfWeekString === DayOfWeek.SATURDAY || currentDayOfWeekString === DayOfWeek.SUNDAY;
 
-  scheduleToValidate.forEach((entryToValidate) => {
-    // Only perform day-specific validation for entries matching the selected day.
-    // Aggregate checks (like weekly hours) are handled separately below for the whole schedule.
-    if (entryToValidate.day !== currentDayOfWeekString) return;
+  // Optimization: Group sessions by therapist and client for faster conflict checking O(N)
+  const daySchedule = scheduleToValidate.filter(e => e.day === currentDayOfWeekString);
+  const byTherapist = new Map<string, ScheduleEntry[]>();
+  const byClient = new Map<string, ScheduleEntry[]>();
 
-    const entryErrors = validateSessionEntry(entryToValidate, scheduleToValidate, clients, therapists, insuranceQualifications, entryToValidate.id);
+  daySchedule.forEach(entry => {
+    if (entry.therapistId) {
+      if (!byTherapist.has(entry.therapistId)) byTherapist.set(entry.therapistId, []);
+      byTherapist.get(entry.therapistId)!.push(entry);
+    }
+    if (entry.clientId) {
+      if (!byClient.has(entry.clientId)) byClient.set(entry.clientId, []);
+      byClient.get(entry.clientId)!.push(entry);
+    }
+  });
+
+  // Optimization: Pre-filter callouts for the selected date
+  const dayCallouts = callouts.filter(co => isDateAffectedByCalloutRange(selectedDate, co.startDate, co.endDate));
+
+  daySchedule.forEach((entryToValidate) => {
+    // Pass grouped sessions to validateSessionEntry for faster validation
+    const therapistSessions = entryToValidate.therapistId ? byTherapist.get(entryToValidate.therapistId) || [] : [];
+    const clientSessions = entryToValidate.clientId ? byClient.get(entryToValidate.clientId) || [] : [];
+
+    const entryErrors = validateSessionEntry(
+        entryToValidate,
+        daySchedule,
+        clients,
+        therapists,
+        insuranceQualifications,
+        entryToValidate.id,
+        therapistSessions,
+        clientSessions
+    );
 
     if (entryErrors.length > 0) {
       allErrors = [...allErrors, ...entryErrors.map(e => ({
@@ -304,8 +340,7 @@ export const validateFullSchedule = (
       }))];
     }
 
-    const entryCallouts = callouts.filter(co =>
-        isDateAffectedByCalloutRange(selectedDate, co.startDate, co.endDate) && 
+    const entryCallouts = dayCallouts.filter(co =>
         ( (co.entityType === 'therapist' && co.entityId === entryToValidate.therapistId) ||
           (co.entityType === 'client' && co.entityId === entryToValidate.clientId) ) &&
         sessionsOverlap(entryToValidate.startTime, entryToValidate.endTime, co.startTime, co.endTime)

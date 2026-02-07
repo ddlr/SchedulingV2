@@ -48,18 +48,21 @@ const DEFAULT_CONFIG: SystemConfig = {
   allAlliedHealthServices: ["OT", "SLP"],
   allSessionTypes: ['ABA', 'AlliedHealth_OT', 'AlliedHealth_SLP', 'IndirectTime'],
   clientColorPalette: [
-    '#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6',
-    '#BCF60C', '#FABEBE', '#008080', '#E6BEFF', '#9A6324', '#FFFAC8', '#800000', '#AAFFC3',
-    '#808000', '#FFD8B1', '#000075', '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
-    '#D4A5A5', '#FF7F50', '#6495ED', '#483D8B', '#00CED1', '#9400D3', '#FF1493', '#00BFFF',
-    '#ADFF2F', '#FF69B4', '#CD5C5C', '#4B0082', '#F0E68C', '#7CFC00', '#FFFAC8',
-    '#ADD8E6', '#F08080', '#E0FFFF', '#FAFAD2', '#90EE90', '#FFB6C1', '#FFA07A', '#20B2AA',
-    '#87CEFA', '#B0C4DE', '#FFFFE0', '#00FF00', '#32CD32', '#FAF0E6', '#FF00FF',
-    '#FF4500', '#DA70D6', '#EEE8AA', '#98FB98', '#AFEEEE', '#DB7093', '#FFEFD5', '#FFDAB9',
-    '#CD853F', '#FFC0CB', '#DDA0DD', '#B0E0E6', '#FF0000', '#BC8F8F', '#4169E1', '#8B4513',
-    '#FA8072', '#F4A460', '#2E8B57', '#A0522D', '#87CEEB', '#6A5ACD', '#00FF7F', '#4682B4',
-    '#D2B48C', '#008080', '#D8BFD8', '#FF6347', '#40E0D0', '#EE82EE', '#F5DEB3', '#FFFF00',
-    '#9ACD32', '#FF4500', '#2E8B57', '#4682B4', '#D2691E', '#FF8C00', '#0000CD'
+    // High contrast distinct colors
+    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+    '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3',
+    '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000',
+    // Modern vibrant palette
+    '#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6',
+    '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
+    '#80B300', '#809900', '#E6B3B3', '#6680B3', '#66991A',
+    '#FF99E6', '#CCFF1A', '#FF1A66', '#E6331A', '#33FFCC',
+    '#66994D', '#B366CC', '#4D8000', '#B33300', '#CC80CC',
+    '#66664D', '#991AFF', '#E666FF', '#4DB3FF', '#1AB399',
+    '#E666B3', '#33991A', '#CC9999', '#B3B31A', '#00E680',
+    '#4D8066', '#809980', '#E6FF80', '#1AFF33', '#999933',
+    '#FF3380', '#CCCC00', '#66E64D', '#4D80CC', '#9900B3',
+    '#E64D66', '#4DB380', '#FF4D4D', '#99E6E6', '#6666FF'
   ],
   workingDays: [
     DayOfWeek.MONDAY,
