@@ -129,6 +129,8 @@ export const updateCalloutEntry = async (updatedCallout: Callout): Promise<Callo
 export const subscribeToCallouts = (listener: (callouts: Callout[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._callouts]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadCallouts();
 
   return () => {
     const index = listeners.indexOf(listener);

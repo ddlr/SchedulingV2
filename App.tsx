@@ -752,7 +752,7 @@ const App: React.FC = () => {
             <div className="bg-slate-900 p-2 rounded-lg">
                <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-2xl font-serif text-slate-900 tracking-tight">Fiddler Scheduler</h1>
+            <h1 className="text-2xl font-serif text-slate-900 tracking-tight">Ordus ABA</h1>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
@@ -1135,8 +1135,8 @@ const App: React.FC = () => {
       {isSessionModalOpen && ( <SessionModal isOpen={isSessionModalOpen} onClose={handleCloseSessionModal} onSave={handleSaveSession} onDelete={sessionToEdit ? handleDeleteSession : undefined} sessionData={sessionToEdit} newSessionSlot={newSessionSlotDetails} clients={clients} therapists={therapists} availableTeams={availableTeams} insuranceQualifications={availableInsuranceQualifications} availableSessionTypes={ALL_SESSION_TYPES} timeSlots={TIME_SLOTS_H_MM} currentSchedule={schedule || []} currentError={error} clearError={() => setError(null)} /> )}
       <footer className="bg-white border-t border-slate-100 py-8 text-center text-sm text-slate-500">
         <div className="container mx-auto px-4">
-          <p className="font-serif text-lg text-slate-900 mb-2">Fiddler Scheduler</p>
-          <p>&copy; {new Date().getFullYear()} Fiddler Scheduler. Modern scheduling for modern teams.</p>
+          <p className="font-serif text-lg text-slate-900 mb-2">Ordus ABA</p>
+          <p>&copy; {new Date().getFullYear()} Ordus ABA. Modern scheduling for modern teams.</p>
         </div>
       </footer>
     </div>

@@ -103,6 +103,8 @@ export const updateInsuranceQualifications = async (updatedQualifications: Insur
 export const subscribeToInsuranceQualifications = (listener: (qualifications: InsuranceQualification[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._qualifications]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadQualifications();
 
   return () => {
     const index = listeners.indexOf(listener);

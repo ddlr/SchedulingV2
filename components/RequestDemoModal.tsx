@@ -78,7 +78,7 @@ const RequestDemoModal: React.FC<RequestDemoModalProps> = ({ onClose }) => {
           </div>
           <h3 className="text-2xl font-bold text-slate-900 mb-2">Request Submitted!</h3>
           <p className="text-slate-600 mb-6">
-            Thank you for your interest in Fiddler Scheduler. We'll be in touch within 24 hours to schedule your personalized demo.
+            Thank you for your interest in Ordus ABA. We'll be in touch within 24 hours to schedule your personalized demo.
           </p>
           <button
             onClick={onClose}

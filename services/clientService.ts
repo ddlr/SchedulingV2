@@ -207,6 +207,8 @@ export const removeClientsByNames = async (clientNamesToRemove: string[]): Promi
 export const subscribeToClients = (listener: (clients: Client[]) => void): (() => void) => {
   listeners.push(listener);
   listener([..._clients]);
+  // Re-fetch in case the initial module-level load ran before auth was ready
+  loadClients();
 
   return () => {
     const index = listeners.indexOf(listener);
