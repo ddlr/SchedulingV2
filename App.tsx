@@ -376,7 +376,7 @@ const App: React.FC = () => {
     });
   };
 
-  const handleAddCallout = (e: React.FormEvent) => {
+  const handleAddCallout = async (e: React.FormEvent) => {
     e.preventDefault(); setError(null);
     let { entityType, entityId, startDate, endDate, startTime, endTime, reason } = calloutForm;
     if (!entityId || !startDate || !startTime || !endTime) { setError([{ruleId: "MISSING_CALLOUT_FIELDS", message: "Please fill in Entity, Start Date, Start Time, and End Time for the callout."}]); return; }
@@ -388,8 +388,12 @@ const App: React.FC = () => {
 
     if (!entityName) { setError([{ruleId: "CALLOUT_ENTITY_NOT_FOUND", message: `Selected ${entityType} not found for callout.`}]); return; }
 
-    calloutService.addCalloutEntry({ entityType, entityId, entityName, startDate, endDate, startTime, endTime, reason });
-    setCalloutForm(prev => ({ ...prev, entityId: '', startTime: '09:00', endTime: '17:00', reason: '' }));
+    try {
+      await calloutService.addCalloutEntry({ entityType, entityId, entityName, startDate, endDate, startTime, endTime, reason });
+      setCalloutForm(prev => ({ ...prev, entityId: '', startTime: '09:00', endTime: '17:00', reason: '' }));
+    } catch (err: any) {
+      setError([{ruleId: "CALLOUT_SAVE_ERROR", message: `Failed to save callout: ${err.message || 'Unknown error'}`}]);
+    }
   };
   const handleRemoveCallout = (calloutId: string) => calloutService.removeCalloutEntry(calloutId);
 
@@ -430,7 +434,7 @@ const App: React.FC = () => {
     } finally {
       setLoadingState({ active: false, message: 'Processing...' });
     }
-  }, [clients, therapists, selectedDate, callouts]);
+  }, [clients, therapists, selectedDate, callouts, availableInsuranceQualifications, schedule]);
 
   const handleOptimizeCurrentScheduleWithGA = useCallback(async () => {
     if (!selectedDate || !schedule || schedule.length === 0) return;

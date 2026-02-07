@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { GeneratedSchedule, DayOfWeek, ScheduleEntry, Therapist, SessionType, Team, ScheduleViewProps } from '../types';
+import { GeneratedSchedule, DayOfWeek, ScheduleEntry, Therapist, SessionType, Team, ScheduleViewProps, Client } from '../types';
 import { TIME_SLOTS_H_MM, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END } from '../constants';
 import { UserGroupIcon } from './icons/UserGroupIcon';
 import { PencilIcon } from './icons/PencilIcon';
@@ -27,9 +27,9 @@ const generateDisplayTimeSlots = (): string[] => {
 };
 const displayTimeSlots = generateDisplayTimeSlots();
 
-const getSessionTypeStyling = (sessionType: SessionType, clientId: string | null, clients: Client[]): { display: string; classes: string; style?: React.CSSProperties } => {
+const getSessionTypeStyling = (sessionType: SessionType, clientId: string | null, clients: Client[], allClientIds?: string[]): { display: string; classes: string; style?: React.CSSProperties } => {
   const client = clientId ? clients.find(c => c.id === clientId) : null;
-  const clientColor = client ? (client.color || getClientColor(client.id)) : null;
+  const clientColor = client ? (client.color || getClientColor(client.id, allClientIds)) : null;
   const textColor = clientColor ? getContrastText(clientColor) : null;
 
   switch (sessionType) {
@@ -85,6 +85,8 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
         </div>
     );
   }
+
+  const allClientIds = useMemo(() => clients.map(c => c.id), [clients]);
 
   const scheduledDayOfWeek = getDayOfWeekFromDate(scheduledFullDate);
   if (!scheduledDayOfWeek) {
@@ -257,7 +259,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                             const entryEndMinutes = timeToMinutes(entryForCell.endTime);
                             const durationMinutes = entryEndMinutes - entryStartMinutes;
                             const rowSpan = Math.max(1, Math.ceil(durationMinutes / 15));
-                            const styling = getSessionTypeStyling(entryForCell.sessionType, entryForCell.clientId, clients);
+                            const styling = getSessionTypeStyling(entryForCell.sessionType, entryForCell.clientId, clients, allClientIds);
 
                             return (
                                 <td key={entryForCell.id}
