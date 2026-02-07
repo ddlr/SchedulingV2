@@ -2,19 +2,33 @@ import { getClientColorPalette } from '../constants';
 
 /**
  * Returns a stable color from the configured palette for a given ID.
+ * When allClientIds is provided, uses index-based assignment to guarantee
+ * unique colors (up to palette size) instead of hashing which suffers from
+ * birthday-problem collisions.
  */
-export const getClientColor = (id: string): string => {
+export const getClientColor = (id: string, allClientIds?: string[]): string => {
   const palette = getClientColorPalette();
   if (!palette || palette.length === 0) {
     return '#3B82F6';
   }
 
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  // Deduplicate the palette at runtime to avoid same-color assignments
+  const uniquePalette = [...new Set(palette)];
+
+  // Index-based assignment: sort all IDs deterministically, assign by position
+  if (allClientIds && allClientIds.length > 0) {
+    const sorted = [...allClientIds].sort();
+    const index = sorted.indexOf(id);
+    if (index >= 0) return uniquePalette[index % uniquePalette.length];
   }
-  const index = Math.abs(hash) % palette.length;
-  return palette[index];
+
+  // Fallback: FNV-1a hash (better distribution than DJB2 for UUIDs)
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return uniquePalette[((hash >>> 0) % uniquePalette.length)];
 };
 
 /**

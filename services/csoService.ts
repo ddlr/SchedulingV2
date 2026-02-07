@@ -154,6 +154,7 @@ export class FastScheduler {
             if (isDateAffectedByCalloutRange(this.selectedDate, co.startDate, co.endDate)) {
                 const s = Math.max(0, Math.floor((timeToMinutes(co.startTime) - OP_START) / SLOT_SIZE));
                 const e = Math.min(NUM_SLOTS, Math.ceil((timeToMinutes(co.endTime) - OP_START) / SLOT_SIZE));
+                if (e <= s) return; // Skip callouts fully outside operating hours
                 if (co.entityType === 'therapist') {
                     const idx = this.therapists.findIndex(t => t.id === co.entityId);
                     if (idx >= 0) tracker.tBusy[idx] |= ((1n << BigInt(e - s)) - 1n) << BigInt(s);
@@ -371,17 +372,31 @@ export class FastScheduler {
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
         let minScore = Infinity;
-        const iterations = this.clients.length > 15 ? 10000 : 5000;
+        // Scale iterations based on problem size - avoid excessive computation
+        const problemSize = this.clients.length * this.therapists.length;
+        const iterations = problemSize > 500 ? 200 : problemSize > 200 ? 500 : problemSize > 50 ? 1000 : 2000;
+        const maxTimeMs = 8000; // Hard time limit of 8 seconds
+        const startTime = Date.now();
+        let noImprovementCount = 0;
         for (let i = 0; i < iterations; i++) {
-            if (i > 0 && i % 500 === 0) await new Promise(r => setTimeout(r, 0));
+            // Yield to the UI thread every 50 iterations to prevent freezing
+            if (i > 0 && i % 50 === 0) {
+                await new Promise(r => setTimeout(r, 0));
+                // Check time limit
+                if (Date.now() - startTime > maxTimeMs) break;
+            }
             const s = this.createSchedule(initialSchedule);
             const score = this.calculateScore(s, initialSchedule);
             if (score < minScore) {
                 best = s;
                 minScore = score;
+                noImprovementCount = 0;
                 if (minScore === 0) break;
+            } else {
+                noImprovementCount++;
             }
-            // Dynamic adjustment: if we're halfway and still have gaps, maybe we need more randomness in Pass 2/3
+            // Early exit if no improvement for a while (converged)
+            if (noImprovementCount > 150) break;
         }
         return best;
     }
