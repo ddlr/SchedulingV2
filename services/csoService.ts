@@ -38,6 +38,10 @@ class BitTracker {
             if (ti >= 0) { this.cT[ci].add(ti); }
         }
     }
+    public unbookTherapist(ti: number, s: number, l: number) {
+        const m = ((1n << BigInt(l)) - 1n) << BigInt(s);
+        this.tBusy[ti] &= ~m;
+    }
 }
 
 export class FastScheduler {
@@ -525,6 +529,71 @@ export class FastScheduler {
             });
         }
 
+        // Pass 6: Team reclaim - swap off-team ABA sessions with available on-team therapists
+        // After all greedy passes, some sessions ended up off-team due to capacity constraints
+        // at booking time. Now that the full schedule exists, team therapists may be free for those slots.
+        const abaForReclaim = schedule.filter(e => e.sessionType === 'ABA' && e.therapistId && e.clientId);
+        // Prioritize bookend sessions (first/last of day) and longer sessions for reclaim
+        const reclaimFirst = new Map<string, ScheduleEntry>();
+        const reclaimLast = new Map<string, ScheduleEntry>();
+        abaForReclaim.forEach(e => {
+            const prev = reclaimFirst.get(e.clientId!);
+            if (!prev || timeToMinutes(e.startTime) < timeToMinutes(prev.startTime)) reclaimFirst.set(e.clientId!, e);
+            const prevL = reclaimLast.get(e.clientId!);
+            if (!prevL || timeToMinutes(e.endTime) > timeToMinutes(prevL.endTime)) reclaimLast.set(e.clientId!, e);
+        });
+        abaForReclaim.sort((a, b) => {
+            const aBook = (reclaimFirst.get(a.clientId!) === a || reclaimLast.get(a.clientId!) === a) ? 0 : 1;
+            const bBook = (reclaimFirst.get(b.clientId!) === b || reclaimLast.get(b.clientId!) === b) ? 0 : 1;
+            if (aBook !== bBook) return aBook - bBook;
+            const aDur = timeToMinutes(a.endTime) - timeToMinutes(a.startTime);
+            const bDur = timeToMinutes(b.endTime) - timeToMinutes(b.startTime);
+            return bDur - aDur;
+        });
+
+        for (const entry of abaForReclaim) {
+            const client = this.clients.find(c => c.id === entry.clientId);
+            const oldTherapist = this.therapists.find(t => t.id === entry.therapistId);
+            if (!client?.teamId || !oldTherapist) continue;
+            if (oldTherapist.teamId === client.teamId) continue; // already on-team
+
+            const ci = this.clients.findIndex(c => c.id === entry.clientId);
+            const oldTi = this.therapists.findIndex(t => t.id === entry.therapistId);
+            const startSlot = Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE);
+            const len = Math.floor((timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)) / SLOT_SIZE);
+
+            // Find team therapists who could take this slot
+            const candidates = abaEligibleTherapists
+                .filter(x => x.t.teamId === client.teamId && this.meetsInsurance(x.t, client))
+                .sort((a, b) => {
+                    // Prefer therapists already working with this client (no new provider added)
+                    const aKnown = tracker.cT[ci].has(a.ti) ? 0 : 1;
+                    const bKnown = tracker.cT[ci].has(b.ti) ? 0 : 1;
+                    if (aKnown !== bKnown) return aKnown - bKnown;
+                    return tSessionCount[a.ti] - tSessionCount[b.ti];
+                });
+
+            for (const cand of candidates) {
+                if (cand.ti === oldTi) continue;
+                if (!tracker.isTFree(cand.ti, startSlot, len)) continue;
+                // Check max providers - don't exceed limit by adding a new provider
+                const maxP = this.getMaxProviders(client);
+                if (!tracker.cT[ci].has(cand.ti) && tracker.cT[ci].size >= maxP) continue;
+                // Check BTB
+                if (this.isBTB(schedule, client.id, cand.t.id, startSlot, len)) continue;
+
+                // Perform swap: free old therapist's slots, book new therapist
+                tracker.unbookTherapist(oldTi, startSlot, len);
+                tracker.tBusy[cand.ti] |= ((1n << BigInt(len)) - 1n) << BigInt(startSlot);
+                tracker.cT[ci].add(cand.ti);
+                tSessionCount[oldTi]--;
+                tSessionCount[cand.ti]++;
+                entry.therapistId = cand.t.id;
+                entry.therapistName = cand.t.name;
+                break;
+            }
+        }
+
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
@@ -697,7 +766,7 @@ export class FastScheduler {
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
                 if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
                     const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                    penalty += dur * 200; // Base off-team penalty
+                    penalty += dur * 500; // Base off-team penalty
                     // Very high penalty if off-team at start or end of client's day
                     const isFirst = clientFirstSession.get(e.clientId) === e;
                     const isLast = clientLastSession.get(e.clientId) === e;
