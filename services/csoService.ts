@@ -143,8 +143,10 @@ export class FastScheduler {
         const schedule: GeneratedSchedule = [];
         const tracker = new BitTracker(this.therapists.length, this.clients.length);
         const lunchCount = new Array(NUM_SLOTS).fill(0);
-        // Allow enough concurrent lunches to ensure remaining staff can cover all clients
-        const maxConcurrentLunches = Math.max(1, this.therapists.length - this.clients.length);
+        // Limit concurrent lunches for better staggering
+        // Cap at surplus OR 1/3 of therapists, whichever is smaller — forces wider spread
+        const surplus = this.therapists.length - this.clients.length;
+        const maxConcurrentLunches = Math.max(1, Math.min(surplus, Math.ceil(this.therapists.length / 3)));
         const tSessionCount = new Array(this.therapists.length).fill(0);
         const clientMinutes = new Map<number, number>();
         this.clients.forEach((c, ci) => {
@@ -222,11 +224,10 @@ export class FastScheduler {
         for (const tid of teamTherapistIndex.keys()) {
             teamLunchCount.set(tid, new Array(NUM_SLOTS).fill(0));
         }
-        // Per-team max concurrent lunches: ensure enough therapists remain to cover clients
+        // Per-team max concurrent lunches: at most 1 per team per slot for maximum stagger
         const teamMaxLunch = new Map<string, number>();
-        for (const [tid, tis] of teamTherapistIndex) {
-            const clients = teamClientCountMap.get(tid) || 0;
-            teamMaxLunch.set(tid, Math.max(1, tis.length - clients));
+        for (const [tid] of teamTherapistIndex) {
+            teamMaxLunch.set(tid, 1);
         }
 
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
@@ -349,15 +350,15 @@ export class FastScheduler {
             if (teamClients.length === 0 || teamTherapists.length === 0) continue;
 
             // Phase 1: Book one start-of-day session per client (ensures day begins on-team)
-            // Use SHORT sessions to preserve team therapist capacity for Phase 2 end bookends
-            // The extension pass (Pass 4) will grow these outward later
+            // Use LONG sessions to maximize session length and on-team time
+            // Pass 8 (start-of-day split) is the safety net if this fails for any client
             const startOrder = [...teamClients].sort(() => Math.random() - 0.5);
             startOrder.forEach(target => {
                 for (let s = 0; s < NUM_SLOTS; s++) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const sorted = sortForTeam(teamTherapists, target);
                     const before = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true, true);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
                     if (schedule.length > before) break;
                 }
             });
@@ -456,76 +457,7 @@ export class FastScheduler {
         // Pass 4: Session extension - extend existing ABA sessions to fill adjacent free slots
         // This avoids creating new BTB boundaries and directly fills gaps
         // Prioritize on-team sessions so they expand first (especially at start/end of day)
-        const abaEntries = schedule.filter(e => {
-            if (e.sessionType !== 'ABA' || !e.therapistId || !e.clientId) return false;
-            // Never extend off-team BT sessions
-            const client = this.clients.find(c => c.id === e.clientId);
-            const therapist = this.therapists.find(t => t.id === e.therapistId);
-            if (client?.teamId && therapist?.teamId !== client.teamId && therapist?.role === 'BT') return false;
-            return true;
-        });
-        abaEntries.sort((a, b) => {
-            const aClient = this.clients.find(c => c.id === a.clientId);
-            const bClient = this.clients.find(c => c.id === b.clientId);
-            const aTherapist = this.therapists.find(t => t.id === a.therapistId);
-            const bTherapist = this.therapists.find(t => t.id === b.therapistId);
-            const aOnTeam = (aClient?.teamId && aTherapist?.teamId === aClient.teamId) ? 0 : 1;
-            const bOnTeam = (bClient?.teamId && bTherapist?.teamId === bClient.teamId) ? 0 : 1;
-            if (aOnTeam !== bOnTeam) return aOnTeam - bOnTeam;
-            return Math.random() - 0.5;
-        });
-        for (const entry of abaEntries) {
-            const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
-            const ci = this.clients.findIndex(c => c.id === entry.clientId);
-            if (ti < 0 || ci < 0) continue;
-
-            const startSlot = Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE);
-            const endSlot = Math.floor((timeToMinutes(entry.endTime) - OP_START) / SLOT_SIZE);
-            const currentLen = endSlot - startSlot;
-            const maxLen = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
-            const remainingWeeklySlots = Math.floor((this.getMaxWeeklyMinutes(this.clients[ci]) - (clientMinutes.get(ci) || 0)) / SLOT_SIZE);
-            let budget = Math.min(maxLen - currentLen, remainingWeeklySlots);
-            if (budget <= 0) continue;
-
-            // Extend forward
-            let fwd = 0;
-            while (fwd < budget && endSlot + fwd < NUM_SLOTS &&
-                   tracker.isCFree(ci, endSlot + fwd, 1) && tracker.isTFree(ti, endSlot + fwd, 1)) {
-                fwd++;
-            }
-            // Avoid BTB at new end boundary
-            if (fwd > 0) {
-                const newEndMin = OP_START + (endSlot + fwd) * SLOT_SIZE;
-                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.startTime) === newEndMin)) {
-                    fwd--;
-                }
-            }
-            if (fwd > 0) {
-                entry.endTime = minutesToTime(OP_START + (endSlot + fwd) * SLOT_SIZE);
-                tracker.book(ti, ci, endSlot, fwd);
-                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + fwd * SLOT_SIZE);
-                budget -= fwd;
-            }
-
-            // Extend backward
-            let bwd = 0;
-            while (bwd < budget && startSlot - bwd - 1 >= 0 &&
-                   tracker.isCFree(ci, startSlot - bwd - 1, 1) && tracker.isTFree(ti, startSlot - bwd - 1, 1)) {
-                bwd++;
-            }
-            // Avoid BTB at new start boundary
-            if (bwd > 0) {
-                const newStartMin = OP_START + (startSlot - bwd) * SLOT_SIZE;
-                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.endTime) === newStartMin)) {
-                    bwd--;
-                }
-            }
-            if (bwd > 0) {
-                entry.startTime = minutesToTime(OP_START + (startSlot - bwd) * SLOT_SIZE);
-                tracker.book(ti, ci, startSlot - bwd, bwd);
-                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + bwd * SLOT_SIZE);
-            }
-        }
+        this.extendSessions(schedule, tracker, clientMinutes);
 
         // Pass 5: Relaxed gap fill - fill remaining gaps ignoring gap heuristics
         // Prefer same-team even here; the strict gap heuristics in earlier passes can leave slots unfilled
@@ -557,6 +489,9 @@ export class FastScheduler {
                 this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
             });
         }
+
+        // Pass 5b: Second extension pass - extend sessions created in Pass 3b/5 to fill remaining gaps
+        this.extendSessions(schedule, tracker, clientMinutes);
 
         // Pass 6: Team reclaim - swap off-team ABA sessions with available on-team therapists
         // After all greedy passes, some sessions ended up off-team due to capacity constraints
@@ -758,6 +693,78 @@ export class FastScheduler {
                 (s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_'))
             );
         });
+    }
+
+    private extendSessions(schedule: GeneratedSchedule, tracker: BitTracker, clientMinutes: Map<number, number>): void {
+        const entries = schedule.filter(e => {
+            if (e.sessionType !== 'ABA' || !e.therapistId || !e.clientId) return false;
+            // Never extend off-team BT sessions
+            const client = this.clients.find(c => c.id === e.clientId);
+            const therapist = this.therapists.find(t => t.id === e.therapistId);
+            if (client?.teamId && therapist?.teamId !== client.teamId && therapist?.role === 'BT') return false;
+            return true;
+        });
+        // On-team first so they grow before off-team claims adjacent slots
+        entries.sort((a, b) => {
+            const aC = this.clients.find(c => c.id === a.clientId);
+            const bC = this.clients.find(c => c.id === b.clientId);
+            const aT = this.therapists.find(t => t.id === a.therapistId);
+            const bT = this.therapists.find(t => t.id === b.therapistId);
+            const aOn = (aC?.teamId && aT?.teamId === aC.teamId) ? 0 : 1;
+            const bOn = (bC?.teamId && bT?.teamId === bC.teamId) ? 0 : 1;
+            if (aOn !== bOn) return aOn - bOn;
+            return Math.random() - 0.5;
+        });
+        for (const entry of entries) {
+            const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
+            const ci = this.clients.findIndex(c => c.id === entry.clientId);
+            if (ti < 0 || ci < 0) continue;
+
+            const startSlot = Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE);
+            const endSlot = Math.floor((timeToMinutes(entry.endTime) - OP_START) / SLOT_SIZE);
+            const currentLen = endSlot - startSlot;
+            const maxLen = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
+            const remainingWeeklySlots = Math.floor((this.getMaxWeeklyMinutes(this.clients[ci]) - (clientMinutes.get(ci) || 0)) / SLOT_SIZE);
+            let budget = Math.min(maxLen - currentLen, remainingWeeklySlots);
+            if (budget <= 0) continue;
+
+            // Extend forward
+            let fwd = 0;
+            while (fwd < budget && endSlot + fwd < NUM_SLOTS &&
+                   tracker.isCFree(ci, endSlot + fwd, 1) && tracker.isTFree(ti, endSlot + fwd, 1)) {
+                fwd++;
+            }
+            if (fwd > 0) {
+                const newEndMin = OP_START + (endSlot + fwd) * SLOT_SIZE;
+                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.startTime) === newEndMin)) {
+                    fwd--;
+                }
+            }
+            if (fwd > 0) {
+                entry.endTime = minutesToTime(OP_START + (endSlot + fwd) * SLOT_SIZE);
+                tracker.book(ti, ci, endSlot, fwd);
+                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + fwd * SLOT_SIZE);
+                budget -= fwd;
+            }
+
+            // Extend backward
+            let bwd = 0;
+            while (bwd < budget && startSlot - bwd - 1 >= 0 &&
+                   tracker.isCFree(ci, startSlot - bwd - 1, 1) && tracker.isTFree(ti, startSlot - bwd - 1, 1)) {
+                bwd++;
+            }
+            if (bwd > 0) {
+                const newStartMin = OP_START + (startSlot - bwd) * SLOT_SIZE;
+                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.endTime) === newStartMin)) {
+                    bwd--;
+                }
+            }
+            if (bwd > 0) {
+                entry.startTime = minutesToTime(OP_START + (startSlot - bwd) * SLOT_SIZE);
+                tracker.book(ti, ci, startSlot - bwd, bwd);
+                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + bwd * SLOT_SIZE);
+            }
+        }
     }
 
     private isBTB(s: GeneratedSchedule, cid: string, tid: string, startSlot: number, len: number) {
