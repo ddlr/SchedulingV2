@@ -200,22 +200,60 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Lunches
+        // Pass 1: Team-aware Lunches
+        // Build per-team therapist/client counts for staggering
+        const teamTherapistIndex = new Map<string, number[]>();
+        const teamClientCountMap = new Map<string, number>();
+        this.therapists.forEach((t, ti) => {
+            if (t.teamId && t.role !== 'OT' && t.role !== 'SLP') {
+                if (!teamTherapistIndex.has(t.teamId)) teamTherapistIndex.set(t.teamId, []);
+                teamTherapistIndex.get(t.teamId)!.push(ti);
+            }
+        });
+        this.clients.forEach(c => {
+            if (c.teamId) teamClientCountMap.set(c.teamId, (teamClientCountMap.get(c.teamId) || 0) + 1);
+        });
+        // Per-team lunch slot tracking
+        const teamLunchCount = new Map<string, number[]>();
+        for (const tid of teamTherapistIndex.keys()) {
+            teamLunchCount.set(tid, new Array(NUM_SLOTS).fill(0));
+        }
+        // Per-team max concurrent lunches: ensure enough therapists remain to cover clients
+        const teamMaxLunch = new Map<string, number>();
+        for (const [tid, tis] of teamTherapistIndex) {
+            const clients = teamClientCountMap.get(tid) || 0;
+            teamMaxLunch.set(tid, Math.max(1, tis.length - clients));
+        }
+
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
         shuffledT.forEach(q => {
-            // Check if already has a lunch or indirect task in the lunch window from initialSchedule
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
             const opts = [];
             for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
+
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+            const myTeamMax = teamId ? (teamMaxLunch.get(teamId) || 1) : Infinity;
+
+            // Sort: minimize per-team overlap first, then global overlap
+            opts.sort((a, b) => {
+                if (myTeamLunch) {
+                    const teamOverlapA = myTeamLunch[a] + myTeamLunch[a + 1];
+                    const teamOverlapB = myTeamLunch[b] + myTeamLunch[b + 1];
+                    if (teamOverlapA !== teamOverlapB) return teamOverlapA - teamOverlapB;
+                }
+                return (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5);
+            });
             for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                const teamOk = !myTeamLunch || (myTeamLunch[s] < myTeamMax && myTeamLunch[s+1] < myTeamMax);
+                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches && teamOk) {
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
                     break;
                 }
             }
@@ -319,15 +357,27 @@ export class FastScheduler {
             });
 
             // Phase 2: Book one end-of-day session per client (ensures day ends on-team)
+            // Find the last free block and start from a position allowing the longest session to end of day
             const endOrder = [...teamClients].sort(() => Math.random() - 0.5);
             endOrder.forEach(target => {
+                // Find the last contiguous free block
+                let blockEnd = -1;
+                let blockStart = -1;
                 for (let s = NUM_SLOTS - 1; s >= 0; s--) {
-                    if (!tracker.isCFree(target.ci, s, 1)) continue;
-                    const sorted = sortForTeam(teamTherapists, target);
-                    const before = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
-                    if (schedule.length > before) break;
+                    if (tracker.isCFree(target.ci, s, 1)) {
+                        if (blockEnd === -1) blockEnd = s;
+                        blockStart = s;
+                    } else if (blockEnd !== -1) {
+                        break;
+                    }
                 }
+                if (blockStart === -1) return;
+
+                const maxLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                // Start from a point that allows a long session reaching end of block
+                const idealStart = Math.max(blockStart, blockEnd - maxLenSlots + 1);
+                const sorted = sortForTeam(teamTherapists, target);
+                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes);
             });
 
             // Phase 3: Fill remaining team capacity in the middle
@@ -401,10 +451,18 @@ export class FastScheduler {
 
             for (let len = startLenSlots; len >= minLenSlots; len--) {
                 if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
+                    // Check gap after: don't create unfillable gaps after this session
                     let gapAfter = 0;
                     let tempS = s + len;
                     while (tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
                     if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                    // Check gap before: don't create unfillable gaps before this session
+                    if (s > 0) {
+                        let gapBefore = 0;
+                        let tempB = s - 1;
+                        while (tempB >= 0 && tracker.isCFree(target.ci, tempB, 1)) { gapBefore++; tempB--; }
+                        if (gapBefore > 0 && gapBefore < minLenSlots) continue;
+                    }
                     if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
                     if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
 
