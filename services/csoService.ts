@@ -349,14 +349,15 @@ export class FastScheduler {
             if (teamClients.length === 0 || teamTherapists.length === 0) continue;
 
             // Phase 1: Book one start-of-day session per client (ensures day begins on-team)
-            // Use long sessions to maximize on-team time per booking
+            // Use SHORT sessions to preserve team therapist capacity for Phase 2 end bookends
+            // The extension pass (Pass 4) will grow these outward later
             const startOrder = [...teamClients].sort(() => Math.random() - 0.5);
             startOrder.forEach(target => {
                 for (let s = 0; s < NUM_SLOTS; s++) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const sorted = sortForTeam(teamTherapists, target);
                     const before = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true, true);
                     if (schedule.length > before) break;
                 }
             });
@@ -384,8 +385,10 @@ export class FastScheduler {
                 const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                 const maxLen = Math.min(maxAllowedLen, Math.floor(remainingMins / SLOT_SIZE), blockEnd - blockStart + 1);
 
-                // Try sessions anchored to END at blockEnd+1, longest first
-                for (let len = maxLen; len >= minLenSlots; len--) {
+                // Try sessions anchored to END at blockEnd+1, shortest first
+                // Short sessions maximize chance of finding a free team therapist;
+                // Pass 4 extension will grow them backward later
+                for (let len = minLenSlots; len <= maxLen; len++) {
                     const startPos = blockEnd - len + 1;
                     if (startPos < blockStart || startPos < 0) continue;
                     if (!tracker.isCFree(target.ci, startPos, len)) continue;
@@ -684,6 +687,69 @@ export class FastScheduler {
             }
         }
 
+        // Pass 8: Start-of-day team guarantee - split off-team first sessions
+        // Mirror of Pass 7: for each client whose first ABA session is off-team,
+        // shorten it from the start and book a new on-team session for the head slots
+        const abaByClientStart = new Map<string, ScheduleEntry[]>();
+        schedule.forEach(e => {
+            if (e.sessionType === 'ABA' && e.clientId && e.therapistId) {
+                if (!abaByClientStart.has(e.clientId)) abaByClientStart.set(e.clientId, []);
+                abaByClientStart.get(e.clientId)!.push(e);
+            }
+        });
+
+        for (const [clientId, entries] of abaByClientStart) {
+            // Find the first session by start time
+            entries.sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+            const firstEntry = entries[0];
+
+            const client = this.clients.find(c => c.id === clientId);
+            const firstTherapist = this.therapists.find(t => t.id === firstEntry.therapistId);
+            if (!client?.teamId || !firstTherapist) continue;
+            if (firstTherapist.teamId === client.teamId) continue; // already on-team
+
+            const ci = this.clients.findIndex(c => c.id === clientId);
+            const oldTi = this.therapists.findIndex(t => t.id === firstEntry.therapistId);
+            const entryStart = Math.floor((timeToMinutes(firstEntry.startTime) - OP_START) / SLOT_SIZE);
+            const entryEnd = Math.floor((timeToMinutes(firstEntry.endTime) - OP_START) / SLOT_SIZE);
+            const entryLen = entryEnd - entryStart;
+            const minLen = Math.ceil(this.getMinDuration(client) / SLOT_SIZE);
+
+            // Both halves of the split must meet minimum duration
+            if (entryLen < minLen * 2) continue;
+
+            const teamCandidates = abaEligibleTherapists
+                .filter(x => x.t.teamId === client.teamId && this.meetsInsurance(x.t, client))
+                .sort((a, b) => {
+                    const aKnown = tracker.cT[ci].has(a.ti) ? 0 : 1;
+                    const bKnown = tracker.cT[ci].has(b.ti) ? 0 : 1;
+                    if (aKnown !== bKnown) return aKnown - bKnown;
+                    return tSessionCount[a.ti] - tSessionCount[b.ti];
+                });
+
+            // Try giving as many start slots as possible to the team therapist
+            let didSplit = false;
+            for (let teamLen = entryLen - minLen; teamLen >= minLen && !didSplit; teamLen--) {
+                // On-team session covers entryStart to entryStart+teamLen
+                for (const cand of teamCandidates) {
+                    if (!tracker.isTFree(cand.ti, entryStart, teamLen)) continue;
+                    const maxP = this.getMaxProviders(client);
+                    if (!tracker.cT[ci].has(cand.ti) && tracker.cT[ci].size >= maxP) continue;
+                    if (this.isBTB(schedule, clientId, cand.t.id, entryStart, teamLen)) continue;
+
+                    // Split: shorten old session from the front, create new on-team session for the head
+                    tracker.unbookTherapist(oldTi, entryStart, teamLen);
+                    tracker.tBusy[cand.ti] |= ((1n << BigInt(teamLen)) - 1n) << BigInt(entryStart);
+                    tracker.cT[ci].add(cand.ti);
+                    tSessionCount[cand.ti]++;
+                    firstEntry.startTime = minutesToTime(OP_START + (entryStart + teamLen) * SLOT_SIZE);
+                    schedule.push(this.ent(ci, cand.ti, entryStart, teamLen, 'ABA'));
+                    didSplit = true;
+                    break;
+                }
+            }
+        }
+
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
@@ -864,8 +930,8 @@ export class FastScheduler {
                     // Very high penalty if off-team at start or end of client's day
                     const isFirst = clientFirstSession.get(e.clientId) === e;
                     const isLast = clientLastSession.get(e.clientId) === e;
-                    if (isFirst) penalty += 50000;
-                    if (isLast) penalty += 50000;
+                    if (isFirst) penalty += 100000;
+                    if (isLast) penalty += 100000;
                 }
             }
         });
