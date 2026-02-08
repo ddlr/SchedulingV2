@@ -377,7 +377,17 @@ export class FastScheduler {
                 // Start from a point that allows a long session reaching end of block
                 const idealStart = Math.max(blockStart, blockEnd - maxLenSlots + 1);
                 const sorted = sortForTeam(teamTherapists, target);
+                const before = schedule.length;
                 this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes);
+                if (schedule.length > before) return; // Booked at ideal position
+
+                // Fallback: try other positions in the last free block
+                for (let s = blockEnd; s >= blockStart; s--) {
+                    if (!tracker.isCFree(target.ci, s, 1)) continue;
+                    const before2 = schedule.length;
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    if (schedule.length > before2) break;
+                }
             });
 
             // Phase 3: Fill remaining team capacity in the middle
@@ -417,6 +427,86 @@ export class FastScheduler {
             });
         }
 
+        // Pass 4: Session extension - extend existing ABA sessions to fill adjacent free slots
+        // This avoids creating new BTB boundaries and directly fills gaps
+        const abaEntries = schedule.filter(e => e.sessionType === 'ABA' && e.therapistId && e.clientId);
+        abaEntries.sort(() => Math.random() - 0.5);
+        for (const entry of abaEntries) {
+            const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
+            const ci = this.clients.findIndex(c => c.id === entry.clientId);
+            if (ti < 0 || ci < 0) continue;
+
+            const startSlot = Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE);
+            const endSlot = Math.floor((timeToMinutes(entry.endTime) - OP_START) / SLOT_SIZE);
+            const currentLen = endSlot - startSlot;
+            const maxLen = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
+            const remainingWeeklySlots = Math.floor((this.getMaxWeeklyMinutes(this.clients[ci]) - (clientMinutes.get(ci) || 0)) / SLOT_SIZE);
+            let budget = Math.min(maxLen - currentLen, remainingWeeklySlots);
+            if (budget <= 0) continue;
+
+            // Extend forward
+            let fwd = 0;
+            while (fwd < budget && endSlot + fwd < NUM_SLOTS &&
+                   tracker.isCFree(ci, endSlot + fwd, 1) && tracker.isTFree(ti, endSlot + fwd, 1)) {
+                fwd++;
+            }
+            // Avoid BTB at new end boundary
+            if (fwd > 0) {
+                const newEndMin = OP_START + (endSlot + fwd) * SLOT_SIZE;
+                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.startTime) === newEndMin)) {
+                    fwd--;
+                }
+            }
+            if (fwd > 0) {
+                entry.endTime = minutesToTime(OP_START + (endSlot + fwd) * SLOT_SIZE);
+                tracker.book(ti, ci, endSlot, fwd);
+                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + fwd * SLOT_SIZE);
+                budget -= fwd;
+            }
+
+            // Extend backward
+            let bwd = 0;
+            while (bwd < budget && startSlot - bwd - 1 >= 0 &&
+                   tracker.isCFree(ci, startSlot - bwd - 1, 1) && tracker.isTFree(ti, startSlot - bwd - 1, 1)) {
+                bwd++;
+            }
+            // Avoid BTB at new start boundary
+            if (bwd > 0) {
+                const newStartMin = OP_START + (startSlot - bwd) * SLOT_SIZE;
+                if (schedule.some(e => e !== entry && e.clientId === entry.clientId && e.therapistId === entry.therapistId && timeToMinutes(e.endTime) === newStartMin)) {
+                    bwd--;
+                }
+            }
+            if (bwd > 0) {
+                entry.startTime = minutesToTime(OP_START + (startSlot - bwd) * SLOT_SIZE);
+                tracker.book(ti, ci, startSlot - bwd, bwd);
+                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + bwd * SLOT_SIZE);
+            }
+        }
+
+        // Pass 5: Relaxed gap fill - fill remaining gaps ignoring gap heuristics
+        // The strict gap heuristics in earlier passes can leave slots unfilled;
+        // this pass accepts any valid booking to maximize coverage
+        for (let s = 0; s < NUM_SLOTS; s++) {
+            const remainingClients = [...shuffledC].sort(() => Math.random() - 0.5);
+            remainingClients.forEach(target => {
+                if (!tracker.isCFree(target.ci, s, 1)) return;
+                const sorted = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    const aIsCF = a.t.role === 'CF';
+                    const bIsCF = b.t.role === 'CF';
+                    if (aIsCF !== bIsCF) return aIsCF ? -1 : 1;
+                    const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                    const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                    if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                    const aRank = this.getRoleRank(a.t.role);
+                    const bRank = this.getRoleRank(b.t.role);
+                    if (aRank !== bRank) return bRank - aRank;
+                    return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                });
+                this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
+            });
+        }
+
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
@@ -437,7 +527,8 @@ export class FastScheduler {
         schedule: GeneratedSchedule, tracker: BitTracker,
         target: {c: Client, ci: number}, s: number,
         sortedTherapists: {t: Therapist, ti: number}[],
-        tSessionCount: number[], clientMinutes: Map<number, number>
+        tSessionCount: number[], clientMinutes: Map<number, number>,
+        relaxGaps: boolean = false
     ): void {
         for (const q of sortedTherapists) {
             const maxP = this.getMaxProviders(target.c);
@@ -452,16 +543,18 @@ export class FastScheduler {
             for (let len = startLenSlots; len >= minLenSlots; len--) {
                 if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                     // Check gap after: don't create unfillable gaps after this session
-                    let gapAfter = 0;
-                    let tempS = s + len;
-                    while (tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
-                    if (gapAfter > 0 && gapAfter < minLenSlots) continue;
-                    // Check gap before: don't create unfillable gaps before this session
-                    if (s > 0) {
-                        let gapBefore = 0;
-                        let tempB = s - 1;
-                        while (tempB >= 0 && tracker.isCFree(target.ci, tempB, 1)) { gapBefore++; tempB--; }
-                        if (gapBefore > 0 && gapBefore < minLenSlots) continue;
+                    if (!relaxGaps) {
+                        let gapAfter = 0;
+                        let tempS = s + len;
+                        while (tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
+                        if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                        // Check gap before: don't create unfillable gaps before this session
+                        if (s > 0) {
+                            let gapBefore = 0;
+                            let tempB = s - 1;
+                            while (tempB >= 0 && tracker.isCFree(target.ci, tempB, 1)) { gapBefore++; tempB--; }
+                            if (gapBefore > 0 && gapBefore < minLenSlots) continue;
+                        }
                     }
                     if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
                     if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
