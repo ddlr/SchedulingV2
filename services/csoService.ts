@@ -281,8 +281,34 @@ export class FastScheduler {
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
+
+        // Build team-to-therapist index for efficient same-team lookups
+        const teamTherapistIndex = new Map<string, typeof abaEligibleTherapists>();
+        abaEligibleTherapists.forEach(x => {
+            if (x.t.teamId) {
+                if (!teamTherapistIndex.has(x.t.teamId)) teamTherapistIndex.set(x.t.teamId, []);
+                teamTherapistIndex.get(x.t.teamId)!.push(x);
+            }
+        });
+
         for (let s = 0; s < NUM_SLOTS; s++) {
-            const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
+            // Pre-compute which clients have a free, qualified same-team therapist in this slot
+            const clientHasTeamMatch = new Map<number, boolean>();
+            shuffledC.forEach(target => {
+                if (!target.c.teamId) { clientHasTeamMatch.set(target.ci, false); return; }
+                const teammates = teamTherapistIndex.get(target.c.teamId) || [];
+                clientHasTeamMatch.set(target.ci, teammates.some(x =>
+                    tracker.isTFree(x.ti, s, 1) && this.meetsInsurance(x.t, target.c)
+                ));
+            });
+
+            // Sort clients: those with available same-team therapists go first to prevent cross-team stealing
+            const shuffledClientsForSlot = [...shuffledC].sort((a, b) => {
+                const aMatch = clientHasTeamMatch.get(a.ci)!;
+                const bMatch = clientHasTeamMatch.get(b.ci)!;
+                if (aMatch !== bMatch) return aMatch ? -1 : 1;
+                return Math.random() - 0.5;
+            });
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
@@ -478,7 +504,7 @@ export class FastScheduler {
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
                 if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
                     const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                    penalty += dur * 10; // Penalize each minute of off-team ABA coverage
+                    penalty += dur * 200; // Heavily penalize each minute of off-team ABA coverage
                 }
             }
         });
