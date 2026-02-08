@@ -344,14 +344,15 @@ export class FastScheduler {
             const teamTherapists = abaEligibleTherapists.filter(x => x.t.teamId === teamId);
             if (teamClients.length === 0 || teamTherapists.length === 0) continue;
 
-            // Phase 1: Book one start-of-day session per client (ensures day begins on-team)
+            // Phase 1: Book one SHORT start-of-day session per client (ensures day begins on-team)
+            // Using preferShort=true so team therapists are freed sooner for other clients
             const startOrder = [...teamClients].sort(() => Math.random() - 0.5);
             startOrder.forEach(target => {
                 for (let s = 0; s < NUM_SLOTS; s++) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const sorted = sortForTeam(teamTherapists, target);
                     const before = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, false, true);
                     if (schedule.length > before) break;
                 }
             });
@@ -378,14 +379,14 @@ export class FastScheduler {
                 const idealStart = Math.max(blockStart, blockEnd - maxLenSlots + 1);
                 const sorted = sortForTeam(teamTherapists, target);
                 const before = schedule.length;
-                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes);
+                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes, false, true);
                 if (schedule.length > before) return; // Booked at ideal position
 
                 // Fallback: try other positions in the last free block
                 for (let s = blockEnd; s >= blockStart; s--) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const before2 = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, false, true);
                     if (schedule.length > before2) break;
                 }
             });
@@ -429,8 +430,18 @@ export class FastScheduler {
 
         // Pass 4: Session extension - extend existing ABA sessions to fill adjacent free slots
         // This avoids creating new BTB boundaries and directly fills gaps
+        // Prioritize on-team sessions so they expand first (especially at start/end of day)
         const abaEntries = schedule.filter(e => e.sessionType === 'ABA' && e.therapistId && e.clientId);
-        abaEntries.sort(() => Math.random() - 0.5);
+        abaEntries.sort((a, b) => {
+            const aClient = this.clients.find(c => c.id === a.clientId);
+            const bClient = this.clients.find(c => c.id === b.clientId);
+            const aTherapist = this.therapists.find(t => t.id === a.therapistId);
+            const bTherapist = this.therapists.find(t => t.id === b.therapistId);
+            const aOnTeam = (aClient?.teamId && aTherapist?.teamId === aClient.teamId) ? 0 : 1;
+            const bOnTeam = (bClient?.teamId && bTherapist?.teamId === bClient.teamId) ? 0 : 1;
+            if (aOnTeam !== bOnTeam) return aOnTeam - bOnTeam;
+            return Math.random() - 0.5;
+        });
         for (const entry of abaEntries) {
             const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
             const ci = this.clients.findIndex(c => c.id === entry.clientId);
@@ -528,7 +539,7 @@ export class FastScheduler {
         target: {c: Client, ci: number}, s: number,
         sortedTherapists: {t: Therapist, ti: number}[],
         tSessionCount: number[], clientMinutes: Map<number, number>,
-        relaxGaps: boolean = false
+        relaxGaps: boolean = false, preferShort: boolean = false
     ): void {
         for (const q of sortedTherapists) {
             const maxP = this.getMaxProviders(target.c);
@@ -540,7 +551,9 @@ export class FastScheduler {
             const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
             const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
 
-            for (let len = startLenSlots; len >= minLenSlots; len--) {
+            for (let len = preferShort ? minLenSlots : startLenSlots;
+                 preferShort ? len <= startLenSlots : len >= minLenSlots;
+                 len += preferShort ? 1 : -1) {
                 if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                     // Check gap after: don't create unfillable gaps after this session
                     if (!relaxGaps) {
@@ -678,11 +691,11 @@ export class FastScheduler {
                 if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
                     const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
                     penalty += dur * 200; // Base off-team penalty
-                    // Extra penalty if off-team at start or end of client's day
+                    // Very high penalty if off-team at start or end of client's day
                     const isFirst = clientFirstSession.get(e.clientId) === e;
                     const isLast = clientLastSession.get(e.clientId) === e;
-                    if (isFirst) penalty += 5000;
-                    if (isLast) penalty += 5000;
+                    if (isFirst) penalty += 50000;
+                    if (isLast) penalty += 50000;
                 }
             }
         });
