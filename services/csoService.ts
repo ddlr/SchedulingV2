@@ -362,7 +362,7 @@ export class FastScheduler {
             });
 
             // Phase 2: Book one end-of-day session per client (ensures day ends on-team)
-            // Find the last free block and start from a position allowing the longest session to end of day
+            // Anchor sessions so they END at the last free slot (vary start position per length)
             const endOrder = [...teamClients].sort(() => Math.random() - 0.5);
             endOrder.forEach(target => {
                 // Find the last contiguous free block
@@ -378,20 +378,33 @@ export class FastScheduler {
                 }
                 if (blockStart === -1) return;
 
-                const maxLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
-                // Start from a point that allows a long session reaching end of block
-                const idealStart = Math.max(blockStart, blockEnd - maxLenSlots + 1);
                 const sorted = sortForTeam(teamTherapists, target);
-                const before = schedule.length;
-                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes, true);
-                if (schedule.length > before) return; // Booked at ideal position
+                const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
+                const maxAllowedLen = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
+                const maxLen = Math.min(maxAllowedLen, Math.floor(remainingMins / SLOT_SIZE), blockEnd - blockStart + 1);
 
-                // Fallback: try other positions in the last free block
-                for (let s = blockEnd; s >= blockStart; s--) {
-                    if (!tracker.isCFree(target.ci, s, 1)) continue;
-                    const before2 = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
-                    if (schedule.length > before2) break;
+                // Try sessions anchored to END at blockEnd+1, longest first
+                for (let len = maxLen; len >= minLenSlots; len--) {
+                    const startPos = blockEnd - len + 1;
+                    if (startPos < blockStart || startPos < 0) continue;
+                    if (!tracker.isCFree(target.ci, startPos, len)) continue;
+
+                    let booked = false;
+                    for (const q of sorted) {
+                        const maxP = this.getMaxProviders(target.c);
+                        if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
+                        if (!tracker.isTFree(q.ti, startPos, len)) continue;
+                        if (this.isBTB(schedule, target.c.id, q.t.id, startPos, len)) continue;
+
+                        schedule.push(this.ent(target.ci, q.ti, startPos, len, 'ABA'));
+                        tracker.book(q.ti, target.ci, startPos, len);
+                        tSessionCount[q.ti]++;
+                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                        booked = true;
+                        break;
+                    }
+                    if (booked) return;
                 }
             });
 
@@ -591,6 +604,70 @@ export class FastScheduler {
                 entry.therapistId = cand.t.id;
                 entry.therapistName = cand.t.name;
                 break;
+            }
+        }
+
+        // Pass 7: End-of-day team guarantee - split off-team last sessions
+        // For each client whose last ABA session is off-team, shorten it from the end
+        // and book a new on-team session covering the freed tail slots
+        const abaByClient = new Map<string, ScheduleEntry[]>();
+        schedule.forEach(e => {
+            if (e.sessionType === 'ABA' && e.clientId && e.therapistId) {
+                if (!abaByClient.has(e.clientId)) abaByClient.set(e.clientId, []);
+                abaByClient.get(e.clientId)!.push(e);
+            }
+        });
+
+        for (const [clientId, entries] of abaByClient) {
+            // Find the last session by end time
+            entries.sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime));
+            const lastEntry = entries[0];
+
+            const client = this.clients.find(c => c.id === clientId);
+            const lastTherapist = this.therapists.find(t => t.id === lastEntry.therapistId);
+            if (!client?.teamId || !lastTherapist) continue;
+            if (lastTherapist.teamId === client.teamId) continue; // already on-team
+
+            const ci = this.clients.findIndex(c => c.id === clientId);
+            const oldTi = this.therapists.findIndex(t => t.id === lastEntry.therapistId);
+            const entryStart = Math.floor((timeToMinutes(lastEntry.startTime) - OP_START) / SLOT_SIZE);
+            const entryEnd = Math.floor((timeToMinutes(lastEntry.endTime) - OP_START) / SLOT_SIZE);
+            const entryLen = entryEnd - entryStart;
+            const minLen = Math.ceil(this.getMinDuration(client) / SLOT_SIZE);
+
+            // Both halves of the split must meet minimum duration
+            if (entryLen < minLen * 2) continue;
+
+            const teamCandidates = abaEligibleTherapists
+                .filter(x => x.t.teamId === client.teamId && this.meetsInsurance(x.t, client))
+                .sort((a, b) => {
+                    const aKnown = tracker.cT[ci].has(a.ti) ? 0 : 1;
+                    const bKnown = tracker.cT[ci].has(b.ti) ? 0 : 1;
+                    if (aKnown !== bKnown) return aKnown - bKnown;
+                    return tSessionCount[a.ti] - tSessionCount[b.ti];
+                });
+
+            // Try giving as many end slots as possible to the team therapist
+            let didSplit = false;
+            for (let teamLen = entryLen - minLen; teamLen >= minLen && !didSplit; teamLen--) {
+                const splitSlot = entryEnd - teamLen;
+
+                for (const cand of teamCandidates) {
+                    if (!tracker.isTFree(cand.ti, splitSlot, teamLen)) continue;
+                    const maxP = this.getMaxProviders(client);
+                    if (!tracker.cT[ci].has(cand.ti) && tracker.cT[ci].size >= maxP) continue;
+                    if (this.isBTB(schedule, clientId, cand.t.id, splitSlot, teamLen)) continue;
+
+                    // Split: shorten old session, create new on-team session for the tail
+                    tracker.unbookTherapist(oldTi, splitSlot, teamLen);
+                    tracker.tBusy[cand.ti] |= ((1n << BigInt(teamLen)) - 1n) << BigInt(splitSlot);
+                    tracker.cT[ci].add(cand.ti);
+                    tSessionCount[cand.ti]++;
+                    lastEntry.endTime = minutesToTime(OP_START + splitSlot * SLOT_SIZE);
+                    schedule.push(this.ent(ci, cand.ti, splitSlot, teamLen, 'ABA'));
+                    didSplit = true;
+                    break;
+                }
             }
         }
 
