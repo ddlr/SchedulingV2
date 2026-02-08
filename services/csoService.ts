@@ -425,23 +425,24 @@ export class FastScheduler {
             const gapClients = [...shuffledC].sort(() => Math.random() - 0.5);
             gapClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
-                const sorted = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                const sorted = abaEligibleTherapists.filter(x => {
+                    if (!this.meetsInsurance(x.t, target.c)) return false;
+                    // BTs must never have off-team client sessions
+                    if (target.c.teamId && x.t.teamId !== target.c.teamId && x.t.role === 'BT') return false;
+                    return true;
+                }).sort((a, b) => {
                     // Same team first - maximize on-team time
                     const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
                     const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
                     if (aTeam !== bTeam) return aTeam - bTeam;
-                    // CF first (preferred off-team fallback)
-                    const aIsCF = a.t.role === 'CF';
-                    const bIsCF = b.t.role === 'CF';
-                    if (aIsCF !== bIsCF) return aIsCF ? -1 : 1;
+                    // Off-team hierarchy: CF > STAR 3 > STAR 2 > STAR 1 > RBT
+                    const aRank = this.getRoleRank(a.t.role);
+                    const bRank = this.getRoleRank(b.t.role);
+                    if (aRank !== bRank) return bRank - aRank;
                     // Already working with this client (experience)
                     const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                     const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                     if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-                    // Higher rank first for off-team (STAR 3 > STAR 2 > STAR 1 > ...)
-                    const aRank = this.getRoleRank(a.t.role);
-                    const bRank = this.getRoleRank(b.t.role);
-                    if (aRank !== bRank) return bRank - aRank;
                     // Even distribution
                     return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
                 });
@@ -452,7 +453,14 @@ export class FastScheduler {
         // Pass 4: Session extension - extend existing ABA sessions to fill adjacent free slots
         // This avoids creating new BTB boundaries and directly fills gaps
         // Prioritize on-team sessions so they expand first (especially at start/end of day)
-        const abaEntries = schedule.filter(e => e.sessionType === 'ABA' && e.therapistId && e.clientId);
+        const abaEntries = schedule.filter(e => {
+            if (e.sessionType !== 'ABA' || !e.therapistId || !e.clientId) return false;
+            // Never extend off-team BT sessions
+            const client = this.clients.find(c => c.id === e.clientId);
+            const therapist = this.therapists.find(t => t.id === e.therapistId);
+            if (client?.teamId && therapist?.teamId !== client.teamId && therapist?.role === 'BT') return false;
+            return true;
+        });
         abaEntries.sort((a, b) => {
             const aClient = this.clients.find(c => c.id === a.clientId);
             const bClient = this.clients.find(c => c.id === b.clientId);
@@ -522,20 +530,25 @@ export class FastScheduler {
             const remainingClients = [...shuffledC].sort(() => Math.random() - 0.5);
             remainingClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
-                const sorted = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                const sorted = abaEligibleTherapists.filter(x => {
+                    if (!this.meetsInsurance(x.t, target.c)) return false;
+                    // BTs must never have off-team client sessions
+                    if (target.c.teamId && x.t.teamId !== target.c.teamId && x.t.role === 'BT') return false;
+                    return true;
+                }).sort((a, b) => {
                     // Same team first
                     const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
                     const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
                     if (aTeam !== bTeam) return aTeam - bTeam;
-                    const aIsCF = a.t.role === 'CF';
-                    const bIsCF = b.t.role === 'CF';
-                    if (aIsCF !== bIsCF) return aIsCF ? -1 : 1;
-                    const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                    const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                    if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                    // Off-team hierarchy: CF > STAR 3 > STAR 2 > STAR 1 > RBT
                     const aRank = this.getRoleRank(a.t.role);
                     const bRank = this.getRoleRank(b.t.role);
                     if (aRank !== bRank) return bRank - aRank;
+                    // Already working with this client (experience)
+                    const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                    const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                    if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                    // Even distribution
                     return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
                 });
                 this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
@@ -843,6 +856,10 @@ export class FastScheduler {
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
                 if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
                     const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                    // BTs should NEVER have off-team client sessions
+                    if (therapist.role === 'BT') {
+                        penalty += 5000000;
+                    }
                     penalty += dur * 500; // Base off-team penalty
                     // Very high penalty if off-team at start or end of client's day
                     const isFirst = clientFirstSession.get(e.clientId) === e;
