@@ -344,15 +344,15 @@ export class FastScheduler {
             const teamTherapists = abaEligibleTherapists.filter(x => x.t.teamId === teamId);
             if (teamClients.length === 0 || teamTherapists.length === 0) continue;
 
-            // Phase 1: Book one SHORT start-of-day session per client (ensures day begins on-team)
-            // Using preferShort=true so team therapists are freed sooner for other clients
+            // Phase 1: Book one start-of-day session per client (ensures day begins on-team)
+            // Use long sessions to maximize on-team time per booking
             const startOrder = [...teamClients].sort(() => Math.random() - 0.5);
             startOrder.forEach(target => {
                 for (let s = 0; s < NUM_SLOTS; s++) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const sorted = sortForTeam(teamTherapists, target);
                     const before = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, false, true);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
                     if (schedule.length > before) break;
                 }
             });
@@ -379,36 +379,40 @@ export class FastScheduler {
                 const idealStart = Math.max(blockStart, blockEnd - maxLenSlots + 1);
                 const sorted = sortForTeam(teamTherapists, target);
                 const before = schedule.length;
-                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes, false, true);
+                this.tryBookABA(schedule, tracker, target, idealStart, sorted, tSessionCount, clientMinutes, true);
                 if (schedule.length > before) return; // Booked at ideal position
 
                 // Fallback: try other positions in the last free block
                 for (let s = blockEnd; s >= blockStart; s--) {
                     if (!tracker.isCFree(target.ci, s, 1)) continue;
                     const before2 = schedule.length;
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, false, true);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
                     if (schedule.length > before2) break;
                 }
             });
 
-            // Phase 3: Fill remaining team capacity in the middle
+            // Phase 3: Fill remaining team capacity in the middle (relaxed gaps - maximize on-team time)
             for (let s = 0; s < NUM_SLOTS; s++) {
                 const slotClients = [...teamClients].sort(() => Math.random() - 0.5);
                 slotClients.forEach(target => {
                     if (!tracker.isCFree(target.ci, s, 1)) return;
                     const sorted = sortForTeam(teamTherapists, target);
-                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
                 });
             }
         }
 
-        // Pass 3b: Cross-team gap filling - fill remaining gaps using off-team hierarchy
+        // Pass 3b: Gap filling - prefer same-team, then cross-team hierarchy
         // Covers: clients still needing coverage after team pass, clients with no team, teams with no therapists
         for (let s = 0; s < NUM_SLOTS; s++) {
             const gapClients = [...shuffledC].sort(() => Math.random() - 0.5);
             gapClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
                 const sorted = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    // Same team first - maximize on-team time
+                    const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
+                    const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
+                    if (aTeam !== bTeam) return aTeam - bTeam;
                     // CF first (preferred off-team fallback)
                     const aIsCF = a.t.role === 'CF';
                     const bIsCF = b.t.role === 'CF';
@@ -496,13 +500,16 @@ export class FastScheduler {
         }
 
         // Pass 5: Relaxed gap fill - fill remaining gaps ignoring gap heuristics
-        // The strict gap heuristics in earlier passes can leave slots unfilled;
-        // this pass accepts any valid booking to maximize coverage
+        // Prefer same-team even here; the strict gap heuristics in earlier passes can leave slots unfilled
         for (let s = 0; s < NUM_SLOTS; s++) {
             const remainingClients = [...shuffledC].sort(() => Math.random() - 0.5);
             remainingClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
                 const sorted = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                    // Same team first
+                    const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
+                    const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
+                    if (aTeam !== bTeam) return aTeam - bTeam;
                     const aIsCF = a.t.role === 'CF';
                     const bIsCF = b.t.role === 'CF';
                     if (aIsCF !== bIsCF) return aIsCF ? -1 : 1;
