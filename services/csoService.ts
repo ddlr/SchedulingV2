@@ -143,10 +143,17 @@ export class FastScheduler {
         const schedule: GeneratedSchedule = [];
         const tracker = new BitTracker(this.therapists.length, this.clients.length);
         const lunchCount = new Array(NUM_SLOTS).fill(0);
-        // Limit concurrent lunches for better staggering
-        // Cap at surplus OR 1/3 of therapists, whichever is smaller — forces wider spread
+        // Lunch staggering: balance between spreading lunches out and ensuring everyone gets one
+        const lsCalc = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+        const leCalc = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+        const lunchWindowSlots = leCalc - lsCalc + 1; // number of possible start positions
+        // Minimum concurrent needed so all therapists fit: ceil(therapists / windowSlots)
+        const minForCapacity = Math.ceil(this.therapists.length / Math.max(1, lunchWindowSlots));
+        // Preferred max for staggering: cap at 1/3 of therapists or surplus
         const surplus = this.therapists.length - this.clients.length;
-        const maxConcurrentLunches = Math.max(1, Math.min(surplus, Math.ceil(this.therapists.length / 3)));
+        const preferredMax = Math.max(2, Math.min(surplus, Math.ceil(this.therapists.length / 3)));
+        // Use the larger of the two to guarantee everyone gets lunch
+        const maxConcurrentLunches = Math.max(minForCapacity, preferredMax);
         const tSessionCount = new Array(this.therapists.length).fill(0);
         const clientMinutes = new Map<number, number>();
         this.clients.forEach((c, ci) => {
@@ -224,10 +231,12 @@ export class FastScheduler {
         for (const tid of teamTherapistIndex.keys()) {
             teamLunchCount.set(tid, new Array(NUM_SLOTS).fill(0));
         }
-        // Per-team max concurrent lunches: at most 1 per team per slot for maximum stagger
+        // Per-team max concurrent lunches: scaled so all team members can fit in the window
         const teamMaxLunch = new Map<string, number>();
-        for (const [tid] of teamTherapistIndex) {
-            teamMaxLunch.set(tid, 1);
+        for (const [tid, tis] of teamTherapistIndex) {
+            // At minimum ceil(teamSize / windowSlots), but at least 1
+            const minTeamConcurrent = Math.ceil(tis.length / Math.max(1, lunchWindowSlots));
+            teamMaxLunch.set(tid, Math.max(1, minTeamConcurrent));
         }
 
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
@@ -255,6 +264,52 @@ export class FastScheduler {
             for (const s of opts) {
                 const teamOk = !myTeamLunch || (myTeamLunch[s] < myTeamMax && myTeamLunch[s+1] < myTeamMax);
                 if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches && teamOk) {
+                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                    tracker.book(q.ti, -1, s, 2);
+                    lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
+                    break;
+                }
+            }
+        });
+
+        // Fallback: therapists who still have no lunch — retry with relaxed then no limits
+        shuffledT.forEach(q => {
+            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const opts = [];
+            for (let s = ls; s <= le; s++) opts.push(s);
+            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
+
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+
+            // Pass A: ignore team limit, keep global limit
+            for (const s of opts) {
+                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                    tracker.book(q.ti, -1, s, 2);
+                    lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
+                    break;
+                }
+            }
+        });
+        shuffledT.forEach(q => {
+            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const opts = [];
+            for (let s = ls; s <= le; s++) opts.push(s);
+            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
+
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+
+            // Pass B: ignore all limits, just find any free slot in the window
+            for (const s of opts) {
+                if (tracker.isTFree(q.ti, s, 2)) {
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
