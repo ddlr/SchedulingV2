@@ -279,7 +279,7 @@ export class FastScheduler {
             });
         });
 
-        // Pass 3: ABA Sessions - Two-phase approach for team alignment
+        // Pass 3: ABA Sessions - Bookend team approach
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
 
         // Collect all unique team IDs and shuffle for randomness across iterations
@@ -287,28 +287,55 @@ export class FastScheduler {
         this.clients.forEach(c => { if (c.teamId) teamIds.add(c.teamId); });
         const teamOrder = [...teamIds].sort(() => Math.random() - 0.5);
 
-        // Pass 3a: Per-team mini scheduling - each team fills its own clients first
+        // Helper: sort team therapists for a given client
+        const sortForTeam = (therapists: typeof abaEligibleTherapists, target: typeof shuffledC[0]) => {
+            return therapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                const aRank = this.getRoleRank(a.t.role);
+                const bRank = this.getRoleRank(b.t.role);
+                if (aRank !== bRank) return aRank - bRank;
+                return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+            });
+        };
+
+        // Pass 3a: Per-team bookend scheduling - start, end, then fill middle
         for (const teamId of teamOrder) {
             const teamClients = shuffledC.filter(x => x.c.teamId === teamId);
             const teamTherapists = abaEligibleTherapists.filter(x => x.t.teamId === teamId);
             if (teamClients.length === 0 || teamTherapists.length === 0) continue;
 
+            // Phase 1: Book one start-of-day session per client (ensures day begins on-team)
+            const startOrder = [...teamClients].sort(() => Math.random() - 0.5);
+            startOrder.forEach(target => {
+                for (let s = 0; s < NUM_SLOTS; s++) {
+                    if (!tracker.isCFree(target.ci, s, 1)) continue;
+                    const sorted = sortForTeam(teamTherapists, target);
+                    const before = schedule.length;
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    if (schedule.length > before) break;
+                }
+            });
+
+            // Phase 2: Book one end-of-day session per client (ensures day ends on-team)
+            const endOrder = [...teamClients].sort(() => Math.random() - 0.5);
+            endOrder.forEach(target => {
+                for (let s = NUM_SLOTS - 1; s >= 0; s--) {
+                    if (!tracker.isCFree(target.ci, s, 1)) continue;
+                    const sorted = sortForTeam(teamTherapists, target);
+                    const before = schedule.length;
+                    this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+                    if (schedule.length > before) break;
+                }
+            });
+
+            // Phase 3: Fill remaining team capacity in the middle
             for (let s = 0; s < NUM_SLOTS; s++) {
                 const slotClients = [...teamClients].sort(() => Math.random() - 0.5);
                 slotClients.forEach(target => {
                     if (!tracker.isCFree(target.ci, s, 1)) return;
-                    const sorted = teamTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Already working with this client (Medicaid limit safety)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-                        // Lower rank first (preserve senior staff time)
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank;
-                        // Even distribution
-                        return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
-                    });
+                    const sorted = sortForTeam(teamTherapists, target);
                     this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
                 });
             }
@@ -477,13 +504,34 @@ export class FastScheduler {
         }
 
         // Team alignment penalty: penalize off-team ABA assignments
+        // Extra penalty for off-team at start/end of day (bookend enforcement)
+        const clientFirstSession = new Map<string, ScheduleEntry>();
+        const clientLastSession = new Map<string, ScheduleEntry>();
+        s.forEach(e => {
+            if (e.clientId && e.therapistId && e.sessionType === 'ABA') {
+                const prev = clientFirstSession.get(e.clientId);
+                if (!prev || timeToMinutes(e.startTime) < timeToMinutes(prev.startTime)) {
+                    clientFirstSession.set(e.clientId, e);
+                }
+                const prevLast = clientLastSession.get(e.clientId);
+                if (!prevLast || timeToMinutes(e.endTime) > timeToMinutes(prevLast.endTime)) {
+                    clientLastSession.set(e.clientId, e);
+                }
+            }
+        });
+
         s.forEach(e => {
             if (e.clientId && e.therapistId && e.sessionType === 'ABA') {
                 const client = this.clients.find(c => c.id === e.clientId);
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
                 if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
                     const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                    penalty += dur * 200; // Heavily penalize each minute of off-team ABA coverage
+                    penalty += dur * 200; // Base off-team penalty
+                    // Extra penalty if off-team at start or end of client's day
+                    const isFirst = clientFirstSession.get(e.clientId) === e;
+                    const isLast = clientLastSession.get(e.clientId) === e;
+                    if (isFirst) penalty += 5000;
+                    if (isLast) penalty += 5000;
                 }
             }
         });
