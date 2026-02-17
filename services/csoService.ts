@@ -386,8 +386,15 @@ export class FastScheduler {
         const teamOrder = [...teamIds].sort(() => Math.random() - 0.5);
 
         // Helper: sort team therapists for a given client
+        // Section 4.3: On-team prioritizes least change (known therapists), any BT/RBT/CF/Star;
+        // BCBAs are absolute last resort even on their own team
         const sortForTeam = (therapists: typeof abaEligibleTherapists, target: typeof shuffledC[0]) => {
             return therapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                // BCBAs are absolute last resort even on-team
+                const aIsBCBA = a.t.role === 'BCBA' ? 1 : 0;
+                const bIsBCBA = b.t.role === 'BCBA' ? 1 : 0;
+                if (aIsBCBA !== bIsBCBA) return aIsBCBA - bIsBCBA;
+                // Least change from base schedule: prefer known therapists (existing pairings)
                 const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                 const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                 if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
@@ -478,27 +485,32 @@ export class FastScheduler {
             }
         }
 
-        // Pass 3b: Gap filling - prefer same-team, then cross-team hierarchy
-        // Covers: clients still needing coverage after team pass, clients with no team, teams with no therapists
+        // Pass 3b: Gap filling - Section 4.3 Fallback Hierarchy
+        // On-team: known therapists first, any BT/RBT/CF/Star meeting insurance; BCBAs last resort
+        // Cross-team: CF > Star 3 > Star 2 > Star 1 > RBT > BT > BCBA(primary team) > BCBA(other team)
         for (let s = 0; s < NUM_SLOTS; s++) {
             const gapClients = [...shuffledC].sort(() => Math.random() - 0.5);
             gapClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
                 const sorted = abaEligibleTherapists.filter(x => {
                     if (!this.meetsInsurance(x.t, target.c)) return false;
-                    // BTs must never have off-team client sessions
-                    if (target.c.teamId && x.t.teamId !== target.c.teamId && x.t.role === 'BT') return false;
                     return true;
                 }).sort((a, b) => {
-                    // Same team first - maximize on-team time
-                    const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
-                    const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
-                    if (aTeam !== bTeam) return aTeam - bTeam;
-                    // Off-team hierarchy: CF > STAR 3 > STAR 2 > STAR 1 > RBT
-                    const aRank = this.getRoleRank(a.t.role);
-                    const bRank = this.getRoleRank(b.t.role);
-                    if (aRank !== bRank) return bRank - aRank;
-                    // Already working with this client (experience)
+                    const aOnTeam = target.c.teamId && a.t.teamId === target.c.teamId;
+                    const bOnTeam = target.c.teamId && b.t.teamId === target.c.teamId;
+                    const aIsBCBA = a.t.role === 'BCBA';
+                    const bIsBCBA = b.t.role === 'BCBA';
+                    // Tier: on-team non-BCBA (0) > cross-team non-BCBA (1) > on-team BCBA (2) > cross-team BCBA (3)
+                    const aTier = aIsBCBA ? (aOnTeam ? 2 : 3) : (aOnTeam ? 0 : 1);
+                    const bTier = bIsBCBA ? (bOnTeam ? 2 : 3) : (bOnTeam ? 0 : 1);
+                    if (aTier !== bTier) return aTier - bTier;
+                    // Within cross-team non-BCBA: descending role rank (CF > Star 3 > Star 2 > Star 1 > RBT > BT)
+                    if (aTier === 1) {
+                        const aRank = this.getRoleRank(a.t.role);
+                        const bRank = this.getRoleRank(b.t.role);
+                        if (aRank !== bRank) return bRank - aRank;
+                    }
+                    // Known therapist (least change from base schedule)
                     const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                     const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                     if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
@@ -514,27 +526,31 @@ export class FastScheduler {
         // Prioritize on-team sessions so they expand first (especially at start/end of day)
         this.extendSessions(schedule, tracker, clientMinutes);
 
-        // Pass 5: Relaxed gap fill - fill remaining gaps ignoring gap heuristics
-        // Prefer same-team even here; the strict gap heuristics in earlier passes can leave slots unfilled
+        // Pass 5: Relaxed gap fill - Section 4.3 Fallback Hierarchy (relaxed gaps)
+        // Same cross-team hierarchy as Pass 3b but ignoring gap heuristics
         for (let s = 0; s < NUM_SLOTS; s++) {
             const remainingClients = [...shuffledC].sort(() => Math.random() - 0.5);
             remainingClients.forEach(target => {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
                 const sorted = abaEligibleTherapists.filter(x => {
                     if (!this.meetsInsurance(x.t, target.c)) return false;
-                    // BTs must never have off-team client sessions
-                    if (target.c.teamId && x.t.teamId !== target.c.teamId && x.t.role === 'BT') return false;
                     return true;
                 }).sort((a, b) => {
-                    // Same team first
-                    const aTeam = (target.c.teamId && a.t.teamId === target.c.teamId) ? 0 : 1;
-                    const bTeam = (target.c.teamId && b.t.teamId === target.c.teamId) ? 0 : 1;
-                    if (aTeam !== bTeam) return aTeam - bTeam;
-                    // Off-team hierarchy: CF > STAR 3 > STAR 2 > STAR 1 > RBT
-                    const aRank = this.getRoleRank(a.t.role);
-                    const bRank = this.getRoleRank(b.t.role);
-                    if (aRank !== bRank) return bRank - aRank;
-                    // Already working with this client (experience)
+                    const aOnTeam = target.c.teamId && a.t.teamId === target.c.teamId;
+                    const bOnTeam = target.c.teamId && b.t.teamId === target.c.teamId;
+                    const aIsBCBA = a.t.role === 'BCBA';
+                    const bIsBCBA = b.t.role === 'BCBA';
+                    // Tier: on-team non-BCBA (0) > cross-team non-BCBA (1) > on-team BCBA (2) > cross-team BCBA (3)
+                    const aTier = aIsBCBA ? (aOnTeam ? 2 : 3) : (aOnTeam ? 0 : 1);
+                    const bTier = bIsBCBA ? (bOnTeam ? 2 : 3) : (bOnTeam ? 0 : 1);
+                    if (aTier !== bTier) return aTier - bTier;
+                    // Within cross-team non-BCBA: descending role rank (CF > Star 3 > Star 2 > Star 1 > RBT > BT)
+                    if (aTier === 1) {
+                        const aRank = this.getRoleRank(a.t.role);
+                        const bRank = this.getRoleRank(b.t.role);
+                        if (aRank !== bRank) return bRank - aRank;
+                    }
+                    // Known therapist (least change from base schedule)
                     const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                     const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                     if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
@@ -753,10 +769,9 @@ export class FastScheduler {
     private extendSessions(schedule: GeneratedSchedule, tracker: BitTracker, clientMinutes: Map<number, number>): void {
         const entries = schedule.filter(e => {
             if (e.sessionType !== 'ABA' || !e.therapistId || !e.clientId) return false;
-            // Never extend off-team BT sessions
-            const client = this.clients.find(c => c.id === e.clientId);
+            // Never extend BCBA sessions - they are absolute last resort, keep them minimal
             const therapist = this.therapists.find(t => t.id === e.therapistId);
-            if (client?.teamId && therapist?.teamId !== client.teamId && therapist?.role === 'BT') return false;
+            if (therapist?.role === 'BCBA') return false;
             return true;
         });
         // On-team first so they grow before off-team claims adjacent slots
@@ -982,18 +997,24 @@ export class FastScheduler {
             if (e.clientId && e.therapistId && e.sessionType === 'ABA') {
                 const client = this.clients.find(c => c.id === e.clientId);
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
-                if (client?.teamId && therapist && therapist.teamId !== client.teamId) {
-                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                    // BTs should NEVER have off-team client sessions
-                    if (therapist.role === 'BT') {
-                        penalty += 5000000;
+                if (client?.teamId && therapist) {
+                    // Section 4.3: BCBAs are absolute last resort for client sessions
+                    if (therapist.role === 'BCBA') {
+                        if (therapist.teamId === client.teamId) {
+                            penalty += 3000000; // BCBA on primary team - last resort
+                        } else {
+                            penalty += 5000000; // BCBA on another team - absolute last resort
+                        }
                     }
-                    penalty += dur * 500; // Base off-team penalty
-                    // Very high penalty if off-team at start or end of client's day
-                    const isFirst = clientFirstSession.get(e.clientId) === e;
-                    const isLast = clientLastSession.get(e.clientId) === e;
-                    if (isFirst) penalty += 100000;
-                    if (isLast) penalty += 100000;
+                    if (therapist.teamId !== client.teamId) {
+                        const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                        penalty += dur * 500; // Base off-team penalty
+                        // Very high penalty if off-team at start or end of client's day
+                        const isFirst = clientFirstSession.get(e.clientId) === e;
+                        const isLast = clientLastSession.get(e.clientId) === e;
+                        if (isFirst) penalty += 100000;
+                        if (isLast) penalty += 100000;
+                    }
                 }
             }
         });
