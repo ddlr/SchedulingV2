@@ -769,9 +769,6 @@ export class FastScheduler {
     private extendSessions(schedule: GeneratedSchedule, tracker: BitTracker, clientMinutes: Map<number, number>): void {
         const entries = schedule.filter(e => {
             if (e.sessionType !== 'ABA' || !e.therapistId || !e.clientId) return false;
-            // Never extend BCBA sessions - they are absolute last resort, keep them minimal
-            const therapist = this.therapists.find(t => t.id === e.therapistId);
-            if (therapist?.role === 'BCBA') return false;
             return true;
         });
         // On-team first so they grow before off-team claims adjacent slots
