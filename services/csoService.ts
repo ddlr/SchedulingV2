@@ -213,8 +213,7 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Team-aware Lunches
-        // Build per-team therapist/client counts for staggering
+        // Team data structures (used for lunch staggering and team scheduling)
         const teamTherapistIndex = new Map<string, number[]>();
         const teamClientCountMap = new Map<string, number>();
         this.therapists.forEach((t, ti) => {
@@ -226,99 +225,18 @@ export class FastScheduler {
         this.clients.forEach(c => {
             if (c.teamId) teamClientCountMap.set(c.teamId, (teamClientCountMap.get(c.teamId) || 0) + 1);
         });
-        // Per-team lunch slot tracking
         const teamLunchCount = new Map<string, number[]>();
         for (const tid of teamTherapistIndex.keys()) {
             teamLunchCount.set(tid, new Array(NUM_SLOTS).fill(0));
         }
-        // Per-team max concurrent lunches: scaled so all team members can fit in the window
         const teamMaxLunch = new Map<string, number>();
         for (const [tid, tis] of teamTherapistIndex) {
-            // At minimum ceil(teamSize / windowSlots), but at least 1
             const minTeamConcurrent = Math.ceil(tis.length / Math.max(1, lunchWindowSlots));
             teamMaxLunch.set(tid, Math.max(1, minTeamConcurrent));
         }
 
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
-        shuffledT.forEach(q => {
-            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
-
-            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
-            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
-            const opts = [];
-            for (let s = ls; s <= le; s++) opts.push(s);
-
-            const teamId = q.t.teamId;
-            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
-            const myTeamMax = teamId ? (teamMaxLunch.get(teamId) || 1) : Infinity;
-
-            // Sort: minimize per-team overlap first, then global overlap
-            opts.sort((a, b) => {
-                if (myTeamLunch) {
-                    const teamOverlapA = myTeamLunch[a] + myTeamLunch[a + 1];
-                    const teamOverlapB = myTeamLunch[b] + myTeamLunch[b + 1];
-                    if (teamOverlapA !== teamOverlapB) return teamOverlapA - teamOverlapB;
-                }
-                return (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5);
-            });
-            for (const s of opts) {
-                const teamOk = !myTeamLunch || (myTeamLunch[s] < myTeamMax && myTeamLunch[s+1] < myTeamMax);
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches && teamOk) {
-                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
-                    tracker.book(q.ti, -1, s, 2);
-                    lunchCount[s]++; lunchCount[s+1]++;
-                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
-                    break;
-                }
-            }
-        });
-
-        // Fallback: therapists who still have no lunch — retry with relaxed then no limits
-        shuffledT.forEach(q => {
-            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
-            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
-            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
-            const opts = [];
-            for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
-
-            const teamId = q.t.teamId;
-            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
-
-            // Pass A: ignore team limit, keep global limit
-            for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
-                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
-                    tracker.book(q.ti, -1, s, 2);
-                    lunchCount[s]++; lunchCount[s+1]++;
-                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
-                    break;
-                }
-            }
-        });
-        shuffledT.forEach(q => {
-            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
-            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
-            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
-            const opts = [];
-            for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
-
-            const teamId = q.t.teamId;
-            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
-
-            // Pass B: ignore all limits, just find any free slot in the window
-            for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2)) {
-                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
-                    tracker.book(q.ti, -1, s, 2);
-                    lunchCount[s]++; lunchCount[s+1]++;
-                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
-                    break;
-                }
-            }
-        });
-
+        // Client sessions are booked FIRST - lunches are deferred until after all client coverage
+        // This prevents lunch blocks from creating client coverage gaps around midday
         const shuffledC = this.clients.map((c, ci) => ({c, ci})).sort(() => Math.random() - 0.5);
 
         // Pass 2: Allied Health (Attempt to assign therapists to Allied Health sessions)
@@ -485,40 +403,48 @@ export class FastScheduler {
             }
         }
 
-        // Pass 3b: Gap filling - Section 4.3 Fallback Hierarchy
-        // On-team: known therapists first, any BT/RBT/CF/Star meeting insurance; BCBAs last resort
-        // Cross-team: CF > Star 3 > Star 2 > Star 1 > RBT > BT > BCBA(primary team) > BCBA(other team)
-        for (let s = 0; s < NUM_SLOTS; s++) {
-            const gapClients = [...shuffledC].sort(() => Math.random() - 0.5);
-            gapClients.forEach(target => {
-                if (!tracker.isCFree(target.ci, s, 1)) return;
-                const sorted = abaEligibleTherapists.filter(x => {
-                    if (!this.meetsInsurance(x.t, target.c)) return false;
-                    return true;
-                }).sort((a, b) => {
-                    const aOnTeam = target.c.teamId && a.t.teamId === target.c.teamId;
-                    const bOnTeam = target.c.teamId && b.t.teamId === target.c.teamId;
-                    const aIsBCBA = a.t.role === 'BCBA';
-                    const bIsBCBA = b.t.role === 'BCBA';
-                    // Tier: on-team non-BCBA (0) > cross-team non-BCBA (1) > on-team BCBA (2) > cross-team BCBA (3)
-                    const aTier = aIsBCBA ? (aOnTeam ? 2 : 3) : (aOnTeam ? 0 : 1);
-                    const bTier = bIsBCBA ? (bOnTeam ? 2 : 3) : (bOnTeam ? 0 : 1);
-                    if (aTier !== bTier) return aTier - bTier;
-                    // Within cross-team non-BCBA: descending role rank (CF > Star 3 > Star 2 > Star 1 > RBT > BT)
-                    if (aTier === 1) {
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return bRank - aRank;
-                    }
-                    // Known therapist (least change from base schedule)
-                    const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                    const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                    if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-                    // Even distribution
-                    return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
-                });
-                this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+        // Section 4.3 sort helper: reused across gap fill passes
+        const sortFallbackHierarchy = (target: typeof shuffledC[0]) => {
+            return abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                const aOnTeam = target.c.teamId && a.t.teamId === target.c.teamId;
+                const bOnTeam = target.c.teamId && b.t.teamId === target.c.teamId;
+                const aIsBCBA = a.t.role === 'BCBA';
+                const bIsBCBA = b.t.role === 'BCBA';
+                const aTier = aIsBCBA ? (aOnTeam ? 2 : 3) : (aOnTeam ? 0 : 1);
+                const bTier = bIsBCBA ? (bOnTeam ? 2 : 3) : (bOnTeam ? 0 : 1);
+                if (aTier !== bTier) return aTier - bTier;
+                if (aTier === 1) {
+                    const aRank = this.getRoleRank(a.t.role);
+                    const bRank = this.getRoleRank(b.t.role);
+                    if (aRank !== bRank) return bRank - aRank;
+                }
+                const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
             });
+        };
+
+        // Pass 3b: MRV gap fill - most constrained slots first (Section 4.3 Fallback Hierarchy)
+        // MRV (Minimum Remaining Values): process slots with fewest available therapists first
+        // This prevents easy-to-fill slots from consuming therapists needed for harder slots
+        {
+            const uncovered: {target: typeof shuffledC[0], s: number, avail: number}[] = [];
+            for (const target of shuffledC) {
+                for (let s = 0; s < NUM_SLOTS; s++) {
+                    if (!tracker.isCFree(target.ci, s, 1)) continue;
+                    const avail = abaEligibleTherapists.filter(x =>
+                        this.meetsInsurance(x.t, target.c) && tracker.isTFree(x.ti, s, 1)
+                    ).length;
+                    uncovered.push({ target, s, avail });
+                }
+            }
+            uncovered.sort((a, b) => a.avail - b.avail || Math.random() - 0.5);
+            for (const { target, s } of uncovered) {
+                if (!tracker.isCFree(target.ci, s, 1)) continue;
+                const sorted = sortFallbackHierarchy(target);
+                this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes);
+            }
         }
 
         // Pass 4: Session extension - extend existing ABA sessions to fill adjacent free slots
@@ -526,39 +452,24 @@ export class FastScheduler {
         // Prioritize on-team sessions so they expand first (especially at start/end of day)
         this.extendSessions(schedule, tracker, clientMinutes);
 
-        // Pass 5: Relaxed gap fill - Section 4.3 Fallback Hierarchy (relaxed gaps)
-        // Same cross-team hierarchy as Pass 3b but ignoring gap heuristics
-        for (let s = 0; s < NUM_SLOTS; s++) {
-            const remainingClients = [...shuffledC].sort(() => Math.random() - 0.5);
-            remainingClients.forEach(target => {
-                if (!tracker.isCFree(target.ci, s, 1)) return;
-                const sorted = abaEligibleTherapists.filter(x => {
-                    if (!this.meetsInsurance(x.t, target.c)) return false;
-                    return true;
-                }).sort((a, b) => {
-                    const aOnTeam = target.c.teamId && a.t.teamId === target.c.teamId;
-                    const bOnTeam = target.c.teamId && b.t.teamId === target.c.teamId;
-                    const aIsBCBA = a.t.role === 'BCBA';
-                    const bIsBCBA = b.t.role === 'BCBA';
-                    // Tier: on-team non-BCBA (0) > cross-team non-BCBA (1) > on-team BCBA (2) > cross-team BCBA (3)
-                    const aTier = aIsBCBA ? (aOnTeam ? 2 : 3) : (aOnTeam ? 0 : 1);
-                    const bTier = bIsBCBA ? (bOnTeam ? 2 : 3) : (bOnTeam ? 0 : 1);
-                    if (aTier !== bTier) return aTier - bTier;
-                    // Within cross-team non-BCBA: descending role rank (CF > Star 3 > Star 2 > Star 1 > RBT > BT)
-                    if (aTier === 1) {
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return bRank - aRank;
-                    }
-                    // Known therapist (least change from base schedule)
-                    const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                    const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                    if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-                    // Even distribution
-                    return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
-                });
+        // Pass 5: MRV relaxed gap fill - most constrained first, relaxed gap heuristics
+        {
+            const uncovered: {target: typeof shuffledC[0], s: number, avail: number}[] = [];
+            for (const target of shuffledC) {
+                for (let s = 0; s < NUM_SLOTS; s++) {
+                    if (!tracker.isCFree(target.ci, s, 1)) continue;
+                    const avail = abaEligibleTherapists.filter(x =>
+                        this.meetsInsurance(x.t, target.c) && tracker.isTFree(x.ti, s, 1)
+                    ).length;
+                    uncovered.push({ target, s, avail });
+                }
+            }
+            uncovered.sort((a, b) => a.avail - b.avail || Math.random() - 0.5);
+            for (const { target, s } of uncovered) {
+                if (!tracker.isCFree(target.ci, s, 1)) continue;
+                const sorted = sortFallbackHierarchy(target);
                 this.tryBookABA(schedule, tracker, target, s, sorted, tSessionCount, clientMinutes, true);
-            });
+            }
         }
 
         // Pass 5b: Second extension pass - extend sessions created in Pass 3b/5 to fill remaining gaps
@@ -755,6 +666,198 @@ export class FastScheduler {
                 }
             }
         }
+
+        // ===== PHASE: Book lunches AFTER all client sessions =====
+        // By deferring lunches, therapists are fully available for client coverage first.
+        // Lunches are now placed into actual free time, avoiding coverage gaps at midday.
+        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
+        shuffledT.forEach(q => {
+            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const opts: number[] = [];
+            for (let s = ls; s <= le; s++) opts.push(s);
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+            const myTeamMax = teamId ? (teamMaxLunch.get(teamId) || 1) : Infinity;
+            opts.sort((a, b) => {
+                if (myTeamLunch) {
+                    const teamOverlapA = myTeamLunch[a] + myTeamLunch[a + 1];
+                    const teamOverlapB = myTeamLunch[b] + myTeamLunch[b + 1];
+                    if (teamOverlapA !== teamOverlapB) return teamOverlapA - teamOverlapB;
+                }
+                return (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5);
+            });
+            for (const s of opts) {
+                const teamOk = !myTeamLunch || (myTeamLunch[s] < myTeamMax && myTeamLunch[s+1] < myTeamMax);
+                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches && teamOk) {
+                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                    tracker.book(q.ti, -1, s, 2);
+                    lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
+                    break;
+                }
+            }
+        });
+        // Fallback A: ignore team limit, keep global limit
+        shuffledT.forEach(q => {
+            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const opts: number[] = [];
+            for (let s = ls; s <= le; s++) opts.push(s);
+            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+            for (const s of opts) {
+                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                    tracker.book(q.ti, -1, s, 2);
+                    lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
+                    break;
+                }
+            }
+        });
+        // Fallback B: ignore all limits
+        shuffledT.forEach(q => {
+            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
+            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const opts: number[] = [];
+            for (let s = ls; s <= le; s++) opts.push(s);
+            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
+            const teamId = q.t.teamId;
+            const myTeamLunch = teamId ? teamLunchCount.get(teamId) : null;
+            for (const s of opts) {
+                if (tracker.isTFree(q.ti, s, 2)) {
+                    schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                    tracker.book(q.ti, -1, s, 2);
+                    lunchCount[s]++; lunchCount[s+1]++;
+                    if (myTeamLunch) { myTeamLunch[s]++; myTeamLunch[s+1]++; }
+                    break;
+                }
+            }
+        });
+
+        // ===== PHASE: Post-lunch coverage repair =====
+        // Extension pass: grow sessions into slots freed by lunch placement
+        this.extendSessions(schedule, tracker, clientMinutes);
+
+        // Micro-gap repair: extend adjacent sessions into remaining single-slot gaps
+        // These are too small for new sessions (below min duration) but extensions can cover them
+        for (const target of shuffledC) {
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                if (!tracker.isCFree(target.ci, s, 1)) continue;
+                // Try extending a session that ends right at this slot (extend forward by 1)
+                const fwdMatch = schedule.find(e =>
+                    e.clientId === target.c.id && e.sessionType === 'ABA' && e.therapistId &&
+                    Math.floor((timeToMinutes(e.endTime) - OP_START) / SLOT_SIZE) === s
+                );
+                if (fwdMatch) {
+                    const ti = this.therapists.findIndex(t => t.id === fwdMatch.therapistId);
+                    if (ti >= 0 && tracker.isTFree(ti, s, 1)) {
+                        const curLen = (timeToMinutes(fwdMatch.endTime) - timeToMinutes(fwdMatch.startTime)) / SLOT_SIZE;
+                        const maxLen = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                        const remainSlots = Math.floor((this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0)) / SLOT_SIZE);
+                        if (curLen < maxLen && remainSlots > 0) {
+                            fwdMatch.endTime = minutesToTime(OP_START + (s + 1) * SLOT_SIZE);
+                            tracker.book(ti, target.ci, s, 1);
+                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + SLOT_SIZE);
+                            continue;
+                        }
+                    }
+                }
+                // Try extending a session that starts right after this slot (extend backward by 1)
+                const bwdMatch = schedule.find(e =>
+                    e.clientId === target.c.id && e.sessionType === 'ABA' && e.therapistId &&
+                    Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE) === s + 1
+                );
+                if (bwdMatch) {
+                    const ti = this.therapists.findIndex(t => t.id === bwdMatch.therapistId);
+                    if (ti >= 0 && tracker.isTFree(ti, s, 1)) {
+                        const curLen = (timeToMinutes(bwdMatch.endTime) - timeToMinutes(bwdMatch.startTime)) / SLOT_SIZE;
+                        const maxLen = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                        const remainSlots = Math.floor((this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0)) / SLOT_SIZE);
+                        if (curLen < maxLen && remainSlots > 0) {
+                            bwdMatch.startTime = minutesToTime(OP_START + s * SLOT_SIZE);
+                            tracker.book(ti, target.ci, s, 1);
+                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + SLOT_SIZE);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Lunch-swap repair: for remaining coverage gaps, try moving therapist lunches
+        // If a therapist has lunch overlapping a client gap and could cover it,
+        // move their lunch to a different free slot and book the client session
+        for (const target of shuffledC) {
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                if (!tracker.isCFree(target.ci, s, 1)) continue;
+                const lunchEntries = schedule.filter(e => {
+                    if (e.sessionType !== 'IndirectTime' || !e.therapistId) return false;
+                    const ls = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+                    return s >= ls && s < ls + 2;
+                });
+                for (const lunchEntry of lunchEntries) {
+                    const ti = this.therapists.findIndex(t => t.id === lunchEntry.therapistId);
+                    if (ti < 0 || !this.meetsInsurance(this.therapists[ti], target.c)) continue;
+                    const lunchStart = Math.floor((timeToMinutes(lunchEntry.startTime) - OP_START) / SLOT_SIZE);
+                    // Temporarily free the old lunch to look for alternative slot
+                    tracker.unbookTherapist(ti, lunchStart, 2);
+                    lunchCount[lunchStart]--;
+                    lunchCount[lunchStart + 1]--;
+                    const myTeamLunch = this.therapists[ti].teamId ? teamLunchCount.get(this.therapists[ti].teamId!) : null;
+                    if (myTeamLunch) { myTeamLunch[lunchStart]--; myTeamLunch[lunchStart + 1]--; }
+
+                    const lls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+                    const lle = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+                    let newSlot = -1;
+                    for (let ns = lls; ns <= lle; ns++) {
+                        if (ns === lunchStart) continue;
+                        if (tracker.isTFree(ti, ns, 2)) { newSlot = ns; break; }
+                    }
+                    if (newSlot >= 0) {
+                        // Move lunch to new slot
+                        lunchEntry.startTime = minutesToTime(OP_START + newSlot * SLOT_SIZE);
+                        lunchEntry.endTime = minutesToTime(OP_START + (newSlot + 2) * SLOT_SIZE);
+                        tracker.book(ti, -1, newSlot, 2);
+                        lunchCount[newSlot]++; lunchCount[newSlot + 1]++;
+                        if (myTeamLunch) { myTeamLunch[newSlot]++; myTeamLunch[newSlot + 1]++; }
+                        // Therapist is now free at the gap slot - try extending adjacent session
+                        const adj = schedule.find(e =>
+                            e.clientId === target.c.id && e.sessionType === 'ABA' && e.therapistId === lunchEntry.therapistId &&
+                            (Math.floor((timeToMinutes(e.endTime) - OP_START) / SLOT_SIZE) === s ||
+                             Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE) === s + 1)
+                        );
+                        if (adj && tracker.isTFree(ti, s, 1)) {
+                            const curLen = (timeToMinutes(adj.endTime) - timeToMinutes(adj.startTime)) / SLOT_SIZE;
+                            const maxLen = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                            if (curLen < maxLen) {
+                                if (Math.floor((timeToMinutes(adj.endTime) - OP_START) / SLOT_SIZE) === s) {
+                                    adj.endTime = minutesToTime(OP_START + (s + 1) * SLOT_SIZE);
+                                } else {
+                                    adj.startTime = minutesToTime(OP_START + s * SLOT_SIZE);
+                                }
+                                tracker.book(ti, target.ci, s, 1);
+                                clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + SLOT_SIZE);
+                            }
+                        }
+                        break;
+                    } else {
+                        // Can't move lunch - put it back
+                        tracker.tBusy[ti] |= ((1n << 2n) - 1n) << BigInt(lunchStart);
+                        lunchCount[lunchStart]++; lunchCount[lunchStart + 1]++;
+                        if (myTeamLunch) { myTeamLunch[lunchStart]++; myTeamLunch[lunchStart + 1]++; }
+                    }
+                }
+            }
+        }
+
+        // Final extension pass: pick up any remaining adjacent free slots
+        this.extendSessions(schedule, tracker, clientMinutes);
 
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
