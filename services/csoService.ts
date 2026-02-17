@@ -999,11 +999,13 @@ export class FastScheduler {
                 const therapist = this.therapists.find(t => t.id === e.therapistId);
                 if (client?.teamId && therapist) {
                     // Section 4.3: BCBAs are absolute last resort for client sessions
+                    // Penalties must stay well below the 10M error threshold to avoid
+                    // the optimizer preferring invalid schedules over valid ones with BCBAs
                     if (therapist.role === 'BCBA') {
                         if (therapist.teamId === client.teamId) {
-                            penalty += 3000000; // BCBA on primary team - last resort
+                            penalty += 200000; // BCBA on primary team - last resort
                         } else {
-                            penalty += 5000000; // BCBA on another team - absolute last resort
+                            penalty += 500000; // BCBA on another team - absolute last resort
                         }
                     }
                     if (therapist.teamId !== client.teamId) {
