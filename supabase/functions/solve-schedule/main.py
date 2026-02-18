@@ -4,13 +4,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from supabase import create_client, Client
 from ortools.sat.python import cp_model
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Add CORS middleware to allow requests from the browser
+# Permissive CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,12 +39,19 @@ def get_day_of_week(date_str: str) -> str:
     except:
         return "Monday"
 
+@app.options("/{path:path}")
+async def options_handler():
+    return Response(status_code=200)
+
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 @app.post("/")
 async def solve_handler(request: Request):
+    # Log request info for debugging
+    print(f"Received request: {request.method} {request.url}")
+
     try:
         body = await request.json()
         target_date_str = body.get("date")
@@ -56,7 +63,7 @@ async def solve_handler(request: Request):
         supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
         if not supabase_url or not supabase_key:
-             # Fallback for local development if not set in environment
+             print("CRITICAL: Supabase credentials not found in environment")
              return JSONResponse({"error": "Supabase credentials not found in environment"}, status_code=500)
 
         supabase: Client = create_client(supabase_url, supabase_key)
@@ -120,13 +127,9 @@ async def solve_handler(request: Request):
                         model.Add(is_start[(ci, ti, s)] >= assign[(ci, ti, s)] - assign[(ci, ti, s-1)])
 
         # 3. Constraints
-
-        # Therapist Capacity: at most 1 client at a time
         for ti in range(len(therapists)):
             for s in range(NUM_SLOTS):
                 model.Add(sum(assign[(ci, ti, s)] for ci in range(len(clients))) <= 1)
-
-        # Client Coverage: at most 1 therapist at a time
         for ci in range(len(clients)):
             for s in range(NUM_SLOTS):
                 model.Add(sum(assign[(ci, ti, s)] for ti in range(len(therapists))) <= 1)
@@ -137,8 +140,6 @@ async def solve_handler(request: Request):
         for ci, client in enumerate(clients):
             c_reqs = client.get('insurance_requirements', [])
             ah_needs = client.get('allied_health_needs', [])
-
-            # Allied Health Needs
             for need in ah_needs:
                 if day_of_week in need.get('specificDays', []):
                     n_start = time_to_minutes(need.get('startTime', ""))
@@ -146,7 +147,6 @@ async def solve_handler(request: Request):
                     n_role = need.get('type')
                     s_start = (n_start - OP_START) // SLOT_SIZE
                     s_end = (n_end - OP_START) // SLOT_SIZE
-
                     if 0 <= s_start < NUM_SLOTS and s_start < s_end <= NUM_SLOTS:
                         eligible_tis = [ti for ti, t in enumerate(therapists) if t.get('role') == n_role]
                         if eligible_tis:
@@ -167,8 +167,6 @@ async def solve_handler(request: Request):
             for ti, therapist in enumerate(therapists):
                 t_role = therapist.get('role')
                 t_quals = therapist.get('qualifications', [])
-
-                # Insurance Match
                 meets = True
                 for req in c_reqs:
                     if req in t_quals: continue
@@ -177,19 +175,14 @@ async def solve_handler(request: Request):
                     if t_rank >= req_rank and req_rank != -1: continue
                     if t_role == req: continue
                     meets = False; break
-
                 if not meets:
                     for s in range(NUM_SLOTS): model.Add(assign[(ci, ti, s)] == 0)
-
-                # Availability
                 t_avail_start = time_to_minutes(config.get("staffAssumedAvailabilityStart", "08:45"))
                 t_avail_end = time_to_minutes(config.get("staffAssumedAvailabilityEnd", "17:15"))
                 for s in range(NUM_SLOTS):
                     st = OP_START + s * SLOT_SIZE
                     if st < t_avail_start or st + SLOT_SIZE > t_avail_end:
                         model.Add(assign[(ci, ti, s)] == 0)
-
-                # Callouts
                 for co in callouts:
                     co_s = (time_to_minutes(co['start_time']) - OP_START) // SLOT_SIZE
                     co_e = (time_to_minutes(co['end_time']) - OP_START) // SLOT_SIZE
@@ -213,25 +206,18 @@ async def solve_handler(request: Request):
         lunch_start_vars = {}
         lunch_at_s_vars = {}
         for ti in range(len(therapists)):
-            # therapist_works[ti] is true if they have at least one client assignment
             model.Add(sum(assign[(ci, ti, s)] for ci in range(len(clients)) for s in range(NUM_SLOTS)) >= 1).OnlyEnforceIf(therapist_works[ti])
             model.Add(sum(assign[(ci, ti, s)] for ci in range(len(clients)) for s in range(NUM_SLOTS)) == 0).OnlyEnforceIf(therapist_works[ti].Not())
-
             ls_var = model.NewIntVar(LUNCH_SLOTS_START, LUNCH_SLOTS_END - 1, f'lunch_start_t{ti}')
             lunch_start_vars[ti] = ls_var
-
             for s in range(LUNCH_SLOTS_START, LUNCH_SLOTS_END):
                 lunch_at_s = model.NewBoolVar(f'lunch_at_t{ti}_s{s}')
                 lunch_at_s_vars[(ti, s)] = lunch_at_s
                 model.Add(ls_var == s).OnlyEnforceIf(lunch_at_s)
                 model.Add(ls_var != s).OnlyEnforceIf(lunch_at_s.Not())
-
-                # If lunch_at_s is true, then therapist cannot work at s or s+1
                 for ci in range(len(clients)):
                     model.Add(assign[(ci, ti, s)] == 0).OnlyEnforceIf(lunch_at_s)
                     if s + 1 < NUM_SLOTS: model.Add(assign[(ci, ti, s+1)] == 0).OnlyEnforceIf(lunch_at_s)
-
-            # Exactly one lunch_at_s must be true if therapist works
             model.Add(sum(lunch_at_s_vars[(ti, s)] for s in range(LUNCH_SLOTS_START, LUNCH_SLOTS_END)) == 1).OnlyEnforceIf(therapist_works[ti])
 
         # Team Alignment & Lunch Staggering
@@ -241,7 +227,6 @@ async def solve_handler(request: Request):
             for ti, therapist in enumerate(therapists):
                 if c_team_id and therapist.get('team_id') and c_team_id != therapist.get('team_id'):
                     for s in range(NUM_SLOTS): team_mismatches.append(assign[(ci, ti, s)])
-
         team_lunch_counts = {}
         for ti, therapist in enumerate(therapists):
             t_team_id = therapist.get('team_id')
@@ -256,7 +241,6 @@ async def solve_handler(request: Request):
         obj_splits = sum(is_start.values())
         obj_team_mismatch = sum(team_mismatches)
         obj_bcba_direct = sum(assign[(ci, ti, s)] for ci in range(len(clients)) for ti, t in enumerate(therapists) if t.get('role') == 'BCBA' for s in range(NUM_SLOTS))
-
         obj_lunch_stagger = 0
         for key, vars in team_lunch_counts.items():
             if len(vars) > 1:
@@ -290,14 +274,12 @@ async def solve_handler(request: Request):
                     for s in range(NUM_SLOTS):
                         if solver.Value(assign[(ci, ti, s)]) == 1:
                             slot_type = "ABA"
-                            # Check if this slot is part of an Allied Health session
                             for need in client.get('allied_health_needs', []):
                                 if day_of_week in need.get('specificDays', []):
                                     ns = (time_to_minutes(need.get('startTime')) - OP_START) // SLOT_SIZE
                                     ne = (time_to_minutes(need.get('endTime')) - OP_START) // SLOT_SIZE
                                     if ns <= s < ne and therapist.get('role') == need.get('type'):
                                         slot_type = f"AlliedHealth_{need.get('type')}"; break
-
                             if cur_s == -1:
                                 cur_s = s; cur_type = slot_type
                             elif slot_type != cur_type:
@@ -309,8 +291,6 @@ async def solve_handler(request: Request):
                                 cur_s = -1; cur_type = None
                     if cur_s != -1:
                         schedule_entries.append(create_entry(client, therapist, day_of_week, cur_s, NUM_SLOTS, OP_START, SLOT_SIZE, cur_type))
-
-            # Add IndirectTime (Lunch) entries
             for ti, therapist in enumerate(therapists):
                 if solver.Value(therapist_works[ti]):
                     ls_val = solver.Value(lunch_start_vars[ti])
@@ -327,6 +307,7 @@ async def solve_handler(request: Request):
         })
     except Exception as e:
         import traceback
+        print(f"Error in solve_handler: {e}")
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()}, status_code=500)
 
 def create_entry(client, therapist, day, start_slot, end_slot, op_start, slot_size, session_type="ABA"):

@@ -20,19 +20,33 @@ export async function runCsoAlgorithm(
 ): Promise<GAGenerationResult> {
     const dateString = toLocalYMD(selectedDate);
 
-    console.log("Invoking solve-schedule for date:", dateString);
+    console.log(`[CSO] Starting optimization for ${dateString} using CP-SAT solver...`);
 
     try {
         const { data, error } = await supabase.functions.invoke('solve-schedule', {
-            body: { date: dateString }
+            body: { date: dateString },
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         if (error) {
-            console.error("Supabase function invocation error details:", error);
+            console.error("[CSO] Edge Function invocation failed:", error);
+
             let errorMessage = error.message || "Unknown error";
-            if (errorMessage.includes("Failed to send a request")) {
-                errorMessage = "Failed to connect to the scheduling solver. Please ensure the Supabase Edge Function 'solve-schedule' is deployed and reachable. If running locally, make sure 'supabase start' and 'supabase functions serve' are active.";
+
+            // Handle common fetch errors which appear as "Failed to send a request"
+            if (errorMessage.includes("Failed to send a request") || errorMessage.includes("TypeError: Load failed")) {
+                errorMessage = `Connection Failed: The browser could not reach the scheduling solver.
+
+Please ensure:
+1. The Edge Function 'solve-schedule' is deployed to your Supabase project.
+2. If running locally, 'supabase start' and 'supabase functions serve' are active.
+3. Your internet connection is stable.
+
+Internal details: ${errorMessage}`;
             }
+
             return {
                 schedule: [],
                 finalValidationErrors: [{ ruleId: "SOLVER_ERROR", message: errorMessage }],
@@ -44,10 +58,10 @@ export async function runCsoAlgorithm(
         }
 
         if (!data || !data.success) {
-            console.error("Solver failed to generate a valid schedule:", data);
+            console.error("[CSO] Solver returned unsuccessful response:", data);
             return {
                 schedule: [],
-                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a perfect schedule: ${data?.status || 'Unknown reason'}. This usually happens when constraints (like mandatory lunch breaks or strict insurance requirements) cannot be met for all staff.` }],
+                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a perfect schedule: ${data?.status || 'Unknown reason'}. This usually happens when constraints (like mandatory lunch breaks or strict insurance requirements) cannot be met for all staff with the current availability.` }],
                 generations: 0,
                 bestFitness: 1,
                 success: false,
@@ -55,8 +69,10 @@ export async function runCsoAlgorithm(
             };
         }
 
+        console.log(`[CSO] Solver success! Received ${data.schedule?.length || 0} entries.`);
         const schedule: GeneratedSchedule = data.schedule;
 
+        // Final validation using existing local rules to ensure parity
         const errors = validateFullSchedule(
             schedule,
             clients,
@@ -78,14 +94,14 @@ export async function runCsoAlgorithm(
         };
 
     } catch (err: any) {
-        console.error("Unexpected error during schedule generation:", err);
+        console.error("[CSO] Unexpected error during schedule generation:", err);
         return {
             schedule: [],
-            finalValidationErrors: [{ ruleId: "UNEXPECTED_ERROR", message: `An unexpected error occurred: ${err.message}` }],
+            finalValidationErrors: [{ ruleId: "UNEXPECTED_ERROR", message: `An unexpected error occurred in the scheduler bridge: ${err.message}` }],
             generations: 0,
             bestFitness: 1,
             success: false,
-            statusMessage: "Error"
+            statusMessage: "Bridge Error"
         };
     }
 }

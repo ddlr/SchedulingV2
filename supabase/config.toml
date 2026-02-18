@@ -5,5 +5,5 @@ verify_jwt = true
 
 [functions.solve-schedule]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 # No entrypoint needed for standard Python functions in Supabase
