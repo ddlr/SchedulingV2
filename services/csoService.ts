@@ -20,17 +20,22 @@ export async function runCsoAlgorithm(
 ): Promise<GAGenerationResult> {
     const dateString = toLocalYMD(selectedDate);
 
+    console.log("Invoking solve-schedule for date:", dateString);
+
     try {
-        // Use the function name defined in config.toml
         const { data, error } = await supabase.functions.invoke('solve-schedule', {
             body: { date: dateString }
         });
 
         if (error) {
-            console.error("Supabase function invocation error:", error);
+            console.error("Supabase function invocation error details:", error);
+            let errorMessage = error.message || "Unknown error";
+            if (errorMessage.includes("Failed to send a request")) {
+                errorMessage = "Failed to connect to the scheduling solver. Please ensure the Supabase Edge Function 'solve-schedule' is deployed and reachable. If running locally, make sure 'supabase start' and 'supabase functions serve' are active.";
+            }
             return {
                 schedule: [],
-                finalValidationErrors: [{ ruleId: "SOLVER_ERROR", message: `Failed to connect to the scheduling solver: ${error.message}` }],
+                finalValidationErrors: [{ ruleId: "SOLVER_ERROR", message: errorMessage }],
                 generations: 0,
                 bestFitness: 1,
                 success: false,
@@ -42,7 +47,7 @@ export async function runCsoAlgorithm(
             console.error("Solver failed to generate a valid schedule:", data);
             return {
                 schedule: [],
-                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a perfect schedule: ${data?.status || 'Unknown reason'}. This usually happens when constraints (like lunch breaks or insurance requirements) cannot be met for all staff.` }],
+                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a perfect schedule: ${data?.status || 'Unknown reason'}. This usually happens when constraints (like mandatory lunch breaks or strict insurance requirements) cannot be met for all staff.` }],
                 generations: 0,
                 bestFitness: 1,
                 success: false,
@@ -52,7 +57,6 @@ export async function runCsoAlgorithm(
 
         const schedule: GeneratedSchedule = data.schedule;
 
-        // Final validation using existing local rules
         const errors = validateFullSchedule(
             schedule,
             clients,
