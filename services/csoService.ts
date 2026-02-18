@@ -21,6 +21,7 @@ export async function runCsoAlgorithm(
     const dateString = toLocalYMD(selectedDate);
 
     try {
+        // Use the function name defined in config.toml
         const { data, error } = await supabase.functions.invoke('solve-schedule', {
             body: { date: dateString }
         });
@@ -33,7 +34,7 @@ export async function runCsoAlgorithm(
                 generations: 0,
                 bestFitness: 1,
                 success: false,
-                statusMessage: "Solver Error"
+                statusMessage: "Solver Connection Error"
             };
         }
 
@@ -41,7 +42,7 @@ export async function runCsoAlgorithm(
             console.error("Solver failed to generate a valid schedule:", data);
             return {
                 schedule: [],
-                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a valid schedule: ${data?.status || 'Unknown error'}` }],
+                finalValidationErrors: [{ ruleId: "SOLVER_FAILED", message: `The solver was unable to find a perfect schedule: ${data?.status || 'Unknown reason'}. This usually happens when constraints (like lunch breaks or insurance requirements) cannot be met for all staff.` }],
                 generations: 0,
                 bestFitness: 1,
                 success: false,

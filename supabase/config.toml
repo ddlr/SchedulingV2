@@ -1,5 +1,9 @@
 
+[functions.create-user]
+enabled = true
+verify_jwt = true
+
 [functions.solve-schedule]
 enabled = true
 verify_jwt = true
-entrypoint = "./functions/solve-schedule/main.py"
+# No entrypoint needed for standard Python functions in Supabase
