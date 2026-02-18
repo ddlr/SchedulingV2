@@ -1,6 +1,7 @@
 import { Client, Therapist, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, TherapistRole } from '../types';
 import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants';
 import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from '../utils/validationService';
+import { solveWithCloudSolver } from './solverClientService';
 
 const SLOT_SIZE = 15;
 const OP_START = timeToMinutes(COMPANY_OPERATING_HOURS_START);
@@ -454,8 +455,37 @@ export async function runCsoAlgorithm(
     initialScheduleForOptimization?: GeneratedSchedule
 ): Promise<GAGenerationResult> {
     const day = getDayOfWeekFromDate(selectedDate);
+
+    // Try cloud CP-SAT solver first
+    try {
+        const cloudResult = await solveWithCloudSolver(
+            clients, therapists, insuranceQualifications,
+            selectedDate, day, callouts, initialScheduleForOptimization
+        );
+        if (cloudResult && cloudResult.schedule) {
+            // Re-validate client-side (safety net — authoritative validation)
+            const errors = validateFullSchedule(
+                cloudResult.schedule, clients, therapists,
+                insuranceQualifications, selectedDate,
+                COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END,
+                callouts
+            );
+            return {
+                ...cloudResult,
+                finalValidationErrors: errors,
+                success: errors.length === 0,
+                statusMessage: errors.length === 0
+                    ? cloudResult.statusMessage
+                    : `Cloud solver completed with ${errors.length} validation issue(s). ${cloudResult.statusMessage}`,
+            };
+        }
+    } catch (e) {
+        console.warn('Cloud solver unavailable, falling back to local scheduler:', e);
+    }
+
+    // Fall back to local greedy scheduler
     const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
     const schedule = await algo.run(initialScheduleForOptimization);
     const errors = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
-    return { schedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
+    return { schedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect! (local)" : "Nearly Perfect. (local)" };
 }
