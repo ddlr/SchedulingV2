@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-PROJECT_ID="${GCP_PROJECT_ID:?Set GCP_PROJECT_ID env var}"
+PROJECT_ID="${GCP_PROJECT_ID:-ordusscheduler-2026}"
 REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="aba-solver"
 
