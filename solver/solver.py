@@ -145,6 +145,8 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     # are penalised in the objective via team_tier costs.
     # Team tier: 0=same-team non-BCBA, 1=cross-team non-BCBA,
     #            2=same-team BCBA, 3=cross-team BCBA
+    # Team tier: 0=same-team non-BCBA, 1=cross-team non-BCBA (CF>STAR3>STAR2>STAR1>RBT),
+    # 2=same-team BCBA, 3=cross-team BCBA, 99=ineligible (BT never cross-team)
     def _team_tier(t_role: str, t_team: str | None, c_team: str | None) -> int:
         if not c_team:
             return 0  # no team → no penalty
@@ -153,6 +155,8 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
         if same and not is_bcba:
             return 0
         if not same and not is_bcba:
+            if t_role == "BT":
+                return 99  # BTs never take cross-team clients
             return 1
         if same and is_bcba:
             return 2
@@ -163,14 +167,14 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     team_tier_map: list[list[int]] = []
     for ci, c in enumerate(clients):
         all_eligible = []
-        tiers = []
         for ti, t in enumerate(therapists):
             if t.role in ("OT", "SLP"):
                 continue  # OT/SLP don't do ABA
             if meets_insurance(t, c, iqs, default_ranks):
                 tier = _team_tier(t.role, t.teamId, c.teamId)
+                if tier >= 99:
+                    continue  # BTs excluded from cross-team
                 all_eligible.append((ti, tier))
-                tiers.append(tier)
         # Sort: tier ascending, then role rank ascending within each tier
         all_eligible.sort(key=lambda x: (x[1], get_role_rank(therapists[x[0]].role, iqs, default_ranks)))
         eligible_pairs.append([x[0] for x in all_eligible])

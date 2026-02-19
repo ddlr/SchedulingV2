@@ -68,13 +68,17 @@ export class FastScheduler {
         return DEFAULT_ROLE_RANK[role] ?? -1;
     }
 
-    // Returns team fallback tier: 0=same-team non-BCBA, 1=cross-team non-BCBA,
-    // 2=same-team BCBA, 3=cross-team BCBA
+    // Returns team fallback tier (lower = preferred):
+    // 0: same-team non-BCBA, 1: cross-team non-BCBA (CF→STAR3→STAR2→STAR1→RBT),
+    // 2: same-team BCBA, 3: cross-team BCBA, 99: ineligible (BT never cross-team)
     private getTeamTier(t: Therapist, clientTeamId: string): number {
         const sameTeam = t.teamId === clientTeamId;
         const isBCBA = t.role === 'BCBA';
         if (sameTeam && !isBCBA) return 0;
-        if (!sameTeam && !isBCBA) return 1;
+        if (!sameTeam && !isBCBA) {
+            if (t.role === 'BT') return 99; // BTs never take cross-team clients
+            return 1;
+        }
         if (sameTeam && isBCBA) return 2;
         return 3;
     }
@@ -357,14 +361,15 @@ export class FastScheduler {
                 if (!tracker.isCFree(target.ci, s, 1)) return;
                 const cTeam = target.c.teamId;
 
-                // Build fallback pool sorted by tier hierarchy
-                const fallbackPool = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
+                // Build fallback pool: exclude tier 99 (BTs never cross-team)
+                let fallbackPool = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
                 if (cTeam) {
+                    fallbackPool = fallbackPool.filter(x => this.getTeamTier(x.t, cTeam) < 99);
                     fallbackPool.sort((a, b) => {
                         const aTier = this.getTeamTier(a.t, cTeam);
                         const bTier = this.getTeamTier(b.t, cTeam);
                         if (aTier !== bTier) return aTier - bTier;
-                        // Within cross-team non-BCBA: prefer higher-ranked
+                        // Within cross-team non-BCBA (tier 1): CF > STAR 3 > STAR 2 > STAR 1 > RBT
                         if (aTier === 1) {
                             const diff = this.getRoleRank(b.t.role) - this.getRoleRank(a.t.role);
                             if (diff !== 0) return diff;
