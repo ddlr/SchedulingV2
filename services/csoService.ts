@@ -287,15 +287,23 @@ export class FastScheduler {
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                        // Priority 0: Same-team therapists first (hard preference)
+                        const cTeam = target.c.teamId;
+                        if (cTeam) {
+                            const aOnTeam = a.t.teamId === cTeam ? 0 : 1;
+                            const bOnTeam = b.t.teamId === cTeam ? 0 : 1;
+                            if (aOnTeam !== bOnTeam) return aOnTeam - bOnTeam;
+                        }
+
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                         if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 2: Role rank (BT/RBT first for billable work)
+                        // Priority 2: Role rank (BT/RBT first, BCBA last)
                         const aRank = this.getRoleRank(a.t.role);
                         const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
+                        if (aRank !== bRank) return aRank - bRank;
 
                         // Priority 3: Current session count (even distribution among same-tier roles)
                         return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
@@ -431,12 +439,23 @@ export class FastScheduler {
             }
         });
 
+        // Off-team penalty: heavily penalize assigning clients to off-team therapists
+        const therapistMap = new Map(this.therapists.map(t => [t.id, t]));
+        const clientMap = new Map(this.clients.map(c => [c.id, c]));
+        s.forEach(e => {
+            if (e.sessionType === 'ABA' && e.clientId && e.therapistId) {
+                const client = clientMap.get(e.clientId);
+                const therapist = therapistMap.get(e.therapistId);
+                if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
+                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                    penalty += dur * 500; // Heavy penalty per minute of off-team time
+                }
+            }
+        });
+
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
-                // If therapist i is higher rank (BCBA) than therapist j (BT)
-                // but therapist i has MORE billable time than j, penalize.
-                // We want to preserve 'blank' time for senior staff.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
                     penalty += (data[i].billable - data[j].billable) * 100;
                 }
