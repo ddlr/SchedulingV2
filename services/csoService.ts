@@ -291,85 +291,88 @@ export class FastScheduler {
             });
         });
 
-        // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        // Pass 3: ABA Sessions — two-pass approach to protect team assignments
+        // Pass 3a: Same-team only (tier 0) — reserves team therapists for their own clients
+        // Pass 3b: Cross-team fallback (tiers 1-3) — fills remaining gaps
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
+
+        const tryAssignSlot = (target: {c: Client; ci: number}, s: number, pool: typeof abaEligibleTherapists) => {
+            if (!tracker.isCFree(target.ci, s, 1)) return;
+
+            const quals = pool.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
+                const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                const aRank = this.getRoleRank(a.t.role);
+                const bRank = this.getRoleRank(b.t.role);
+                if (aRank !== bRank) return aRank - bRank;
+                return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+            });
+
+            for (const q of quals) {
+                const maxP = this.getMaxProviders(target.c);
+                if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
+
+                const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
+                const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
+                const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+                const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+
+                for (let len = startLenSlots; len >= minLenSlots; len--) {
+                    if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
+                        let gapAfter = 0;
+                        let tempS = s + len;
+                        while (tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
+                        if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                        if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
+                        if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
+
+                        schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
+                        tracker.book(q.ti, target.ci, s, len);
+                        tSessionCount[q.ti]++;
+                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                        break;
+                    }
+                }
+                if (!tracker.isCFree(target.ci, s, 1)) break;
+            }
+        };
+
+        // Pass 3a: Same-team only — each client can only use their own team's non-BCBA staff
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
-                if (tracker.isCFree(target.ci, s, 1)) {
-                    // Team-based tiered fallback:
-                    // Tier 0: Same-team non-BCBA  |  Tier 1: Cross-team non-BCBA (higher rank first)
-                    // Tier 2: Same-team BCBA      |  Tier 3: Cross-team BCBA
-                    const cTeam = target.c.teamId;
-                    const eligible = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
+                const cTeam = target.c.teamId;
+                if (!cTeam) return; // no team — handled in 3b
+                const sameTeamPool = abaEligibleTherapists.filter(x => x.t.teamId === cTeam && x.t.role !== 'BCBA');
+                tryAssignSlot(target, s, sameTeamPool);
+            });
+        }
 
-                    const quals = eligible.sort((a, b) => {
-                        if (cTeam) {
-                            const aTier = this.getTeamTier(a.t, cTeam);
-                            const bTier = this.getTeamTier(b.t, cTeam);
-                            if (aTier !== bTier) return aTier - bTier;
+        // Pass 3b: Cross-team fallback — fill remaining gaps using tiered hierarchy
+        for (let s = 0; s < NUM_SLOTS; s++) {
+            const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
+            shuffledClientsForSlot.forEach(target => {
+                if (!tracker.isCFree(target.ci, s, 1)) return;
+                const cTeam = target.c.teamId;
 
-                            // Within cross-team tiers (1, 3): prefer higher-ranked staff
-                            if (aTier === 1) {
-                                const aRank = this.getRoleRank(a.t.role);
-                                const bRank = this.getRoleRank(b.t.role);
-                                if (aRank !== bRank) return bRank - aRank; // descending: CF > STAR 3 > ...
-                            }
+                // Build fallback pool sorted by tier hierarchy
+                const fallbackPool = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
+                if (cTeam) {
+                    fallbackPool.sort((a, b) => {
+                        const aTier = this.getTeamTier(a.t, cTeam);
+                        const bTier = this.getTeamTier(b.t, cTeam);
+                        if (aTier !== bTier) return aTier - bTier;
+                        // Within cross-team non-BCBA: prefer higher-ranked
+                        if (aTier === 1) {
+                            const diff = this.getRoleRank(b.t.role) - this.getRoleRank(a.t.role);
+                            if (diff !== 0) return diff;
                         }
-
-                        // Priority: Already working with this client (Medicaid limit safety)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-
-                        // Priority: Role rank (BT/RBT first for same-team)
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank;
-
-                        // Priority: Current session count (even distribution)
-                        return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                        return 0;
                     });
-
-                    for (const q of quals) {
-                        // Check provider limit
-                        const maxP = this.getMaxProviders(target.c);
-                        if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
-
-                        // Try session lengths from max down to min required
-                        const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
-                        const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
-                        const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
-                        const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
-
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-
-                        for (let len = startLenSlots; len >= minLenSlots; len--) {
-                            if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
-                                // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
-                                let gapAfter = 0;
-                                let tempS = s + len;
-                                while(tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) {
-                                    gapAfter++;
-                                    tempS++;
-                                }
-                                if (gapAfter > 0 && gapAfter < minLenSlots) continue;
-
-                                if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
-
-                                // Final duration safety check
-                                if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
-
-                                schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
-                                tracker.book(q.ti, target.ci, s, len);
-                                tSessionCount[q.ti]++;
-                                clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                                break;
-                            }
-                        }
-                        if (!tracker.isCFree(target.ci, s, 1)) break;
-                    }
                 }
+                tryAssignSlot(target, s, fallbackPool);
             });
         }
 
