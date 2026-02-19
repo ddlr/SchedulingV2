@@ -138,29 +138,43 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     therapist_idx = {t.id: i for i, t in enumerate(therapists)}
 
     # ------------------------------------------------------------------
-    # Pre-compute eligibility and per-client limits
+    # Pre-compute eligibility and per-client team tiers
     # ------------------------------------------------------------------
     # eligible_pairs[ci] = list of ti indices eligible for ABA with this client
-    # Hard constraint: if a client has same-team therapists, ONLY same-team
-    # therapists are eligible. Off-team therapists are only used when no
-    # same-team therapists exist at all.
-    # Within same-team, sorted by role rank ascending (BT first, BCBA last).
+    # All insurance-qualified therapists are included; off-team assignments
+    # are penalised in the objective via team_tier costs.
+    # Team tier: 0=same-team non-BCBA, 1=cross-team non-BCBA,
+    #            2=same-team BCBA, 3=cross-team BCBA
+    def _team_tier(t_role: str, t_team: str | None, c_team: str | None) -> int:
+        if not c_team:
+            return 0  # no team → no penalty
+        same = (t_team == c_team) if t_team else False
+        is_bcba = (t_role == "BCBA")
+        if same and not is_bcba:
+            return 0
+        if not same and not is_bcba:
+            return 1
+        if same and is_bcba:
+            return 2
+        return 3
+
     eligible_pairs: list[list[int]] = []
+    # team_tier_map[ci][ti_local] = tier (0-3) for the ti at that local index
+    team_tier_map: list[list[int]] = []
     for ci, c in enumerate(clients):
-        same_team = []
         all_eligible = []
+        tiers = []
         for ti, t in enumerate(therapists):
             if t.role in ("OT", "SLP"):
                 continue  # OT/SLP don't do ABA
             if meets_insurance(t, c, iqs, default_ranks):
-                all_eligible.append(ti)
-                if c.teamId and t.teamId and t.teamId == c.teamId:
-                    same_team.append(ti)
-        # Use same-team only if available, otherwise fall back to all eligible
-        chosen = same_team if same_team else all_eligible
-        # Sort by role rank ascending (lower rank = preferred, BCBA last)
-        chosen.sort(key=lambda ti: get_role_rank(therapists[ti].role, iqs, default_ranks))
-        eligible_pairs.append(chosen)
+                tier = _team_tier(t.role, t.teamId, c.teamId)
+                all_eligible.append((ti, tier))
+                tiers.append(tier)
+        # Sort: tier ascending, then role rank ascending within each tier
+        all_eligible.sort(key=lambda x: (x[1], get_role_rank(therapists[x[0]].role, iqs, default_ranks)))
+        eligible_pairs.append([x[0] for x in all_eligible])
+        team_tier_map.append([x[1] for x in all_eligible])
 
     # Per-client duration and weekly limits
     min_dur_slots = []
@@ -632,12 +646,17 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 model.add(excess >= 0)
                 objective_terms.append(10 * excess)
 
-    # 3. Within-team BCBA penalty (prefer non-BCBA staff for direct ABA)
+    # 3. Off-team penalty: penalise cross-team and BCBA assignments by tier
+    #    Tier 0 (same-team non-BCBA) = 0, Tier 1 (cross-team non-BCBA) = 300/slot,
+    #    Tier 2 (same-team BCBA) = 500/slot, Tier 3 (cross-team BCBA) = 1000/slot
+    _TIER_WEIGHTS = {0: 0, 1: 300, 2: 500, 3: 1000}
     for ci in range(num_c):
         for ti_local, ti in enumerate(eligible_pairs[ci]):
-            if therapists[ti].role == "BCBA":
+            tier = team_tier_map[ci][ti_local]
+            w = _TIER_WEIGHTS.get(tier, 0)
+            if w > 0:
                 for k in range(len(aba_duration[ci][ti_local])):
-                    objective_terms.append(400 * aba_duration[ci][ti_local][k])
+                    objective_terms.append(w * aba_duration[ci][ti_local][k])
 
     # 4. Note count penalty (weight 50 per active session)
     for ci in range(num_c):

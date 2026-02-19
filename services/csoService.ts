@@ -68,6 +68,17 @@ export class FastScheduler {
         return DEFAULT_ROLE_RANK[role] ?? -1;
     }
 
+    // Returns team fallback tier: 0=same-team non-BCBA, 1=cross-team non-BCBA,
+    // 2=same-team BCBA, 3=cross-team BCBA
+    private getTeamTier(t: Therapist, clientTeamId: string): number {
+        const sameTeam = t.teamId === clientTeamId;
+        const isBCBA = t.role === 'BCBA';
+        if (sameTeam && !isBCBA) return 0;
+        if (!sameTeam && !isBCBA) return 1;
+        if (sameTeam && isBCBA) return 2;
+        return 3;
+    }
+
     private meetsInsurance(t: Therapist, c: Client): boolean {
         if (c.insuranceRequirements.length === 0) return true;
         return c.insuranceRequirements.every(reqId => {
@@ -286,26 +297,37 @@ export class FastScheduler {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
-                    // Hard team constraint: if client has a team, only same-team therapists are eligible
+                    // Team-based tiered fallback:
+                    // Tier 0: Same-team non-BCBA  |  Tier 1: Cross-team non-BCBA (higher rank first)
+                    // Tier 2: Same-team BCBA      |  Tier 3: Cross-team BCBA
                     const cTeam = target.c.teamId;
-                    let eligible = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
-                    if (cTeam) {
-                        const sameTeam = eligible.filter(x => x.t.teamId === cTeam);
-                        if (sameTeam.length > 0) eligible = sameTeam;
-                    }
+                    const eligible = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
 
                     const quals = eligible.sort((a, b) => {
-                        // Priority 1: Already working with this client (Medicaid limit safety)
+                        if (cTeam) {
+                            const aTier = this.getTeamTier(a.t, cTeam);
+                            const bTier = this.getTeamTier(b.t, cTeam);
+                            if (aTier !== bTier) return aTier - bTier;
+
+                            // Within cross-team tiers (1, 3): prefer higher-ranked staff
+                            if (aTier === 1) {
+                                const aRank = this.getRoleRank(a.t.role);
+                                const bRank = this.getRoleRank(b.t.role);
+                                if (aRank !== bRank) return bRank - aRank; // descending: CF > STAR 3 > ...
+                            }
+                        }
+
+                        // Priority: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                         if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 2: Role rank (BT/RBT first, BCBA last)
+                        // Priority: Role rank (BT/RBT first for same-team)
                         const aRank = this.getRoleRank(a.t.role);
                         const bRank = this.getRoleRank(b.t.role);
                         if (aRank !== bRank) return aRank - bRank;
 
-                        // Priority 3: Current session count (even distribution among same-tier roles)
+                        // Priority: Current session count (even distribution)
                         return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
                     });
 
@@ -439,16 +461,21 @@ export class FastScheduler {
             }
         });
 
-        // Off-team penalty: heavily penalize assigning clients to off-team therapists
+        // Tiered off-team penalty: cross-team BCBA penalized more than cross-team non-BCBA
         const therapistMap = new Map(this.therapists.map(t => [t.id, t]));
         const clientMap = new Map(this.clients.map(c => [c.id, c]));
         s.forEach(e => {
             if (e.sessionType === 'ABA' && e.clientId && e.therapistId) {
                 const client = clientMap.get(e.clientId);
                 const therapist = therapistMap.get(e.therapistId);
-                if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
-                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                    penalty += dur * 500; // Heavy penalty per minute of off-team time
+                if (client?.teamId && therapist) {
+                    const tier = this.getTeamTier(therapist, client.teamId);
+                    if (tier > 0) {
+                        const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                        // Tier 1 (cross-team non-BCBA): 300/min, Tier 2 (same-team BCBA): 500/min, Tier 3 (cross-team BCBA): 1000/min
+                        const weight = tier === 1 ? 300 : tier === 2 ? 500 : 1000;
+                        penalty += dur * weight;
+                    }
                 }
             }
         });
