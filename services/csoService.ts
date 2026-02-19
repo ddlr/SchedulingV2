@@ -411,17 +411,13 @@ export class FastScheduler {
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
         let minScore = Infinity;
-        // Scale iterations based on problem size - avoid excessive computation
-        const problemSize = this.clients.length * this.therapists.length;
-        const iterations = problemSize > 500 ? 200 : problemSize > 200 ? 500 : problemSize > 50 ? 1000 : 2000;
-        const maxTimeMs = 8000; // Hard time limit of 8 seconds
+        const maxTimeMs = 30000; // 30 second time limit
         const startTime = Date.now();
         let noImprovementCount = 0;
-        for (let i = 0; i < iterations; i++) {
+        for (let i = 0; ; i++) {
             // Yield to the UI thread every 50 iterations to prevent freezing
             if (i > 0 && i % 50 === 0) {
                 await new Promise(r => setTimeout(r, 0));
-                // Check time limit
                 if (Date.now() - startTime > maxTimeMs) break;
             }
             const s = this.createSchedule(initialSchedule);
@@ -434,8 +430,8 @@ export class FastScheduler {
             } else {
                 noImprovementCount++;
             }
-            // Early exit if no improvement for a while (converged)
-            if (noImprovementCount > 150) break;
+            // Early exit if no improvement for 500 iterations (converged)
+            if (noImprovementCount > 500) break;
         }
         return best;
     }
