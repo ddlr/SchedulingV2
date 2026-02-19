@@ -286,15 +286,15 @@ export class FastScheduler {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
-                    const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 0: Same-team therapists first (hard preference)
-                        const cTeam = target.c.teamId;
-                        if (cTeam) {
-                            const aOnTeam = a.t.teamId === cTeam ? 0 : 1;
-                            const bOnTeam = b.t.teamId === cTeam ? 0 : 1;
-                            if (aOnTeam !== bOnTeam) return aOnTeam - bOnTeam;
-                        }
+                    // Hard team constraint: if client has a team, only same-team therapists are eligible
+                    const cTeam = target.c.teamId;
+                    let eligible = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
+                    if (cTeam) {
+                        const sameTeam = eligible.filter(x => x.t.teamId === cTeam);
+                        if (sameTeam.length > 0) eligible = sameTeam;
+                    }
 
+                    const quals = eligible.sort((a, b) => {
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
