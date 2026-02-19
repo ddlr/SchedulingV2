@@ -1,5 +1,6 @@
 """CP-SAT model builder for ABA scheduling optimization."""
 
+import os
 import uuid
 import logging
 from ortools.sat.python import cp_model
@@ -180,6 +181,11 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
         eligible_pairs.append([x[0] for x in all_eligible])
         team_tier_map.append([x[1] for x in all_eligible])
 
+    # Reverse lookup: ti -> local index within eligible_pairs[ci]
+    ti_to_local: list[dict[int, int]] = [
+        {ti: idx for idx, ti in enumerate(ep)} for ep in eligible_pairs
+    ]
+
     # Per-client duration and weekly limits
     min_dur_slots = []
     max_dur_slots = []
@@ -229,6 +235,38 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
         client_slot_blocked.append(blocked)
 
     # ------------------------------------------------------------------
+    # Prune: remove fully-blocked therapists from eligible pairs and
+    # skip ABA variables for clients with zero remaining weekly budget.
+    # ------------------------------------------------------------------
+    therapist_fully_blocked: set[int] = set()
+    for ti in range(num_t):
+        blocked_count = 0
+        for (bs, be) in therapist_blocked[ti]:
+            blocked_count += (be - bs)
+        if blocked_count >= num_slots:
+            therapist_fully_blocked.add(ti)
+
+    if therapist_fully_blocked:
+        new_ep: list[list[int]] = []
+        new_ttm: list[list[int]] = []
+        for ci in range(num_c):
+            filtered = [
+                (ti, team_tier_map[ci][idx])
+                for idx, ti in enumerate(eligible_pairs[ci])
+                if ti not in therapist_fully_blocked
+            ]
+            new_ep.append([x[0] for x in filtered])
+            new_ttm.append([x[1] for x in filtered])
+        eligible_pairs = new_ep
+        team_tier_map = new_ttm
+        ti_to_local = [
+            {ti: idx for idx, ti in enumerate(ep)} for ep in eligible_pairs
+        ]
+
+    # Track which clients have zero budget (skip ABA var creation)
+    zero_budget_clients = {ci for ci in range(num_c) if remaining_weekly_slots[ci] <= 0}
+
+    # ------------------------------------------------------------------
     # Decision variables
     # ------------------------------------------------------------------
 
@@ -250,8 +288,8 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
             k_dur = []
             k_interval = []
             for k in range(MAX_SESSIONS_PER_PAIR):
-                if is_weekend:
-                    # No ABA on weekends — don't create variables
+                if is_weekend or ci in zero_budget_clients:
+                    # No ABA on weekends or for zero-budget clients
                     break
                 pfx = f"aba_c{ci}_t{ti}_k{k}"
                 act = model.new_bool_var(f"{pfx}_act")
@@ -392,10 +430,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
 
         # ABA intervals for this therapist
         for ci in range(num_c):
-            if ti in eligible_pairs[ci]:
-                ti_local = eligible_pairs[ci].index(ti)
-                for k in range(len(aba_interval[ci][ti_local])):
-                    intervals.append(aba_interval[ci][ti_local][k])
+            if ti in ti_to_local[ci]:
+                tl = ti_to_local[ci][ti]
+                for k in range(len(aba_interval[ci][tl])):
+                    intervals.append(aba_interval[ci][tl][k])
 
         # Allied health intervals assigned to this therapist
         for ah in ah_entries:
@@ -464,10 +502,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 for idx, ti in enumerate(ah["eligible_tis"]):
                     # If this AH therapist is also an ABA-eligible therapist, the prov var
                     # already exists. Otherwise we need a separate one.
-                    if ti in eligible_pairs[ci]:
-                        ti_local = eligible_pairs[ci].index(ti)
+                    if ti in ti_to_local[ci]:
+                        tl = ti_to_local[ci][ti]
                         # The prov var already captures ABA. We also need to link AH choice.
-                        model.add_implication(ah["choice_vars"][idx], ci_prov[ti_local])
+                        model.add_implication(ah["choice_vars"][idx], ci_prov[tl])
                     else:
                         # Separate provider var for AH-only therapist
                         ah_prov = model.new_bool_var(f"ah_prov_c{ci}_t{ti}")
@@ -501,7 +539,7 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
             model.add(sum(all_durations) + ah_slot_total <= remaining_weekly_slots[ci])
 
     # ------------------------------------------------------------------
-    # Constraint: No back-to-back same client-therapist pair
+    # Constraint: Session pair symmetry breaking + back-to-back gap
     # ------------------------------------------------------------------
     for ci in range(num_c):
         for ti_local, ti in enumerate(eligible_pairs[ci]):
@@ -510,7 +548,12 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 continue
             for k in range(len(sessions) - 1):
                 k1, k2 = sessions[k], sessions[k + 1]
-                # Ordering: session k+1 starts after session k
+
+                # Symmetry breaking: k2 can only be active if k1 is active
+                model.add_implication(aba_active[ci][ti_local][k2],
+                                      aba_active[ci][ti_local][k1])
+
+                # Both-active indicator for ordering + gap constraints
                 both = model.new_bool_var(f"btb_c{ci}_t{ti}_{k}")
                 model.add_bool_and([
                     aba_active[ci][ti_local][k1],
@@ -521,7 +564,8 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                     aba_active[ci][ti_local][k2].negated(),
                 ]).only_enforce_if(both.negated())
 
-                # If both active, gap of at least 1 slot between them
+                # Symmetry breaking: k1 starts before k2 (strict ordering)
+                # Also enforces back-to-back gap of at least 1 slot
                 model.add(
                     aba_start[ci][ti_local][k2] >= aba_start[ci][ti_local][k1] + aba_duration[ci][ti_local][k1] + 1
                 ).only_enforce_if(both)
@@ -535,10 +579,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
 
         # ABA sessions
         for ci in range(num_c):
-            if ti in eligible_pairs[ci]:
-                ti_local = eligible_pairs[ci].index(ti)
-                for k in range(len(aba_active[ci][ti_local])):
-                    billable_indicators.append(aba_active[ci][ti_local][k])
+            if ti in ti_to_local[ci]:
+                tl = ti_to_local[ci][ti]
+                for k in range(len(aba_active[ci][tl])):
+                    billable_indicators.append(aba_active[ci][tl][k])
 
         # Allied health sessions
         for ah in ah_entries:
@@ -559,58 +603,38 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     # ------------------------------------------------------------------
     objective_terms = []
 
-    # 1. Coverage gap penalties (weight 1000 per uncovered slot)
-    # For each client, for each slot, determine if it's covered by any ABA or AH session
+    # 1. Coverage gap penalties (weight 100_000 per uncovered slot)
+    # Aggregate encoding: because no-overlap per client is enforced, total ABA
+    # duration == number of ABA-covered slots.  No per-slot booleans needed.
+    COVERAGE_GAP_WEIGHT = 100_000
     if not is_weekend:
         for ci in range(num_c):
-            # Pre-compute which slots are covered by allied health (fixed)
-            ah_covered = [False] * num_slots
+            # Count slots covered by allied health (fixed)
+            ah_covered_count = 0
             for ah in ah_entries:
                 if ah["ci"] == ci:
-                    for s in range(ah["start_slot"], ah["start_slot"] + ah["length"]):
-                        if 0 <= s < num_slots:
-                            ah_covered[s] = True
+                    ah_covered_count += ah["length"]
 
-            for s in range(num_slots):
-                # Skip blocked slots (callouts) and AH-covered slots
-                if client_slot_blocked[ci][s] or ah_covered[s]:
-                    continue
+            # Count blocked slots
+            blocked_count = sum(1 for s in range(num_slots) if client_slot_blocked[ci][s])
 
-                # Collect all ABA sessions that could cover this slot
-                covering = []
-                for ti_local, ti in enumerate(eligible_pairs[ci]):
-                    for k in range(len(aba_active[ci][ti_local])):
-                        # b = 1 iff session (ti_local, k) covers slot s
-                        b = model.new_bool_var(f"cov_c{ci}_t{ti}_k{k}_s{s}")
-                        # b => active AND start <= s AND start + duration > s
-                        model.add_implication(b, aba_active[ci][ti_local][k])
-                        model.add(aba_start[ci][ti_local][k] <= s).only_enforce_if(b)
-                        model.add(aba_start[ci][ti_local][k] + aba_duration[ci][ti_local][k] >= s + 1).only_enforce_if(b)
-                        # !b => NOT(active AND covers slot)
-                        # We enforce: if active and covers, then b must be 1
-                        # This is done via: active AND start <= s AND end > s => b
-                        # Rewritten: b OR !active OR start > s OR end <= s
-                        not_act = aba_active[ci][ti_local][k].negated()
-                        start_gt_s = model.new_bool_var(f"sgt_c{ci}_t{ti}_k{k}_s{s}")
-                        model.add(aba_start[ci][ti_local][k] > s).only_enforce_if(start_gt_s)
-                        model.add(aba_start[ci][ti_local][k] <= s).only_enforce_if(start_gt_s.negated())
+            available = num_slots - blocked_count - ah_covered_count
+            if available <= 0:
+                continue
 
-                        end_le_s = model.new_bool_var(f"ele_c{ci}_t{ti}_k{k}_s{s}")
-                        model.add(aba_start[ci][ti_local][k] + aba_duration[ci][ti_local][k] <= s).only_enforce_if(end_le_s)
-                        model.add(aba_start[ci][ti_local][k] + aba_duration[ci][ti_local][k] > s).only_enforce_if(end_le_s.negated())
+            # Sum of all ABA durations for this client
+            all_dur_vars = []
+            for ti_local in range(len(eligible_pairs[ci])):
+                for k in range(len(aba_duration[ci][ti_local])):
+                    all_dur_vars.append(aba_duration[ci][ti_local][k])
 
-                        model.add_bool_or([b, not_act, start_gt_s, end_le_s])
-
-                        covering.append(b)
-
-                uncov = model.new_bool_var(f"uncov_c{ci}_s{s}")
-                if covering:
-                    model.add(sum(covering) == 0).only_enforce_if(uncov)
-                    model.add(sum(covering) >= 1).only_enforce_if(uncov.negated())
-                else:
-                    model.add(uncov == 1)
-
-                objective_terms.append(1000 * uncov)
+            if all_dur_vars:
+                uncov = model.new_int_var(0, available, f"uncov_c{ci}")
+                model.add(uncov == available - sum(all_dur_vars))
+                objective_terms.append(COVERAGE_GAP_WEIGHT * uncov)
+            else:
+                # No eligible therapists — all slots uncovered
+                objective_terms.append(COVERAGE_GAP_WEIGHT * available)
 
     # 2. Workload balance penalty (weight 10)
     # Penalize higher-ranked therapists having more billable time than lower-ranked
@@ -618,10 +642,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     for ti in range(num_t):
         dur_vars = []
         for ci in range(num_c):
-            if ti in eligible_pairs[ci]:
-                ti_local = eligible_pairs[ci].index(ti)
-                for k in range(len(aba_duration[ci][ti_local])):
-                    dur_vars.append(aba_duration[ci][ti_local][k])
+            if ti in ti_to_local[ci]:
+                tl = ti_to_local[ci][ti]
+                for k in range(len(aba_duration[ci][tl])):
+                    dur_vars.append(aba_duration[ci][tl][k])
         # Add AH durations (fixed if chosen)
         ah_dur_terms = []
         for ah in ah_entries:
@@ -651,10 +675,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 objective_terms.append(10 * excess)
 
     # 3. Off-team penalty: penalise cross-team and BCBA assignments by tier
-    #    Dominant weights so solver strongly maximizes team adherence.
-    #    Tier 0 (same-team non-BCBA) = 0, Tier 1 (cross-team non-BCBA) = 5000/slot,
-    #    Tier 2 (same-team BCBA) = 8000/slot, Tier 3 (cross-team BCBA) = 15000/slot
-    _TIER_WEIGHTS = {0: 0, 1: 5000, 2: 8000, 3: 15000}
+    #    Tier weights are secondary to coverage (100_000 >> 1_500).
+    #    Tier 0 (same-team non-BCBA) = 0, Tier 1 (cross-team non-BCBA) = 500/slot,
+    #    Tier 2 (same-team BCBA) = 800/slot, Tier 3 (cross-team BCBA) = 1500/slot
+    _TIER_WEIGHTS = {0: 0, 1: 500, 2: 800, 3: 1500}
     for ci in range(num_c):
         for ti_local, ti in enumerate(eligible_pairs[ci]):
             tier = team_tier_map[ci][ti_local]
@@ -698,27 +722,52 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 ti = therapist_idx.get(entry.therapistId)
                 if ci is None or ti is None:
                     continue
-                if ti not in eligible_pairs[ci]:
+                if ti not in ti_to_local[ci]:
                     continue
-                ti_local = eligible_pairs[ci].index(ti)
-                key = (ci, ti_local)
+                tl = ti_to_local[ci][ti]
+                key = (ci, tl)
                 k = hint_count.get(key, 0)
-                if k >= len(aba_active[ci][ti_local]):
+                if k >= len(aba_active[ci][tl]):
                     continue
                 s = max(0, time_to_slot(entry.startTime, op_start))
                 dur = max(1, time_to_slot(entry.endTime, op_start) - s)
-                model.add_hint(aba_active[ci][ti_local][k], 1)
-                model.add_hint(aba_start[ci][ti_local][k], s)
-                model.add_hint(aba_duration[ci][ti_local][k], dur)
+                model.add_hint(aba_active[ci][tl][k], 1)
+                model.add_hint(aba_start[ci][tl][k], s)
+                model.add_hint(aba_duration[ci][tl][k], dur)
                 hint_count[key] = k + 1
+
+    # Hint un-hinted sessions as inactive for a complete warm-start
+    if req.initialSchedule:
+        for ci in range(num_c):
+            for tl in range(len(eligible_pairs[ci])):
+                for k in range(len(aba_active[ci][tl])):
+                    key = (ci, tl)
+                    hinted_k = hint_count.get(key, 0)
+                    if k >= hinted_k:
+                        model.add_hint(aba_active[ci][tl][k], 0)
+                        model.add_hint(aba_duration[ci][tl][k], 0)
 
     # ------------------------------------------------------------------
     # Solve
     # ------------------------------------------------------------------
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 30.0
-    solver.parameters.num_workers = 4
+    solver.parameters.num_workers = int(os.environ.get("SOLVER_WORKERS", "4"))
     solver.parameters.log_search_progress = True
+    solver.parameters.linearization_level = 2
+    solver.parameters.cp_model_probing_level = 2
+
+    # Decision strategy: try activating sessions first (coverage-maximizing)
+    all_active_vars = []
+    for ci in range(num_c):
+        for tl in range(len(eligible_pairs[ci])):
+            all_active_vars.extend(aba_active[ci][tl])
+    if all_active_vars:
+        model.add_decision_strategy(
+            all_active_vars,
+            cp_model.CHOOSE_FIRST,
+            cp_model.SELECT_MAX_VALUE,
+        )
 
     logger.info("Starting CP-SAT solve: %d clients, %d therapists, %d slots",
                 num_c, num_t, num_slots)
