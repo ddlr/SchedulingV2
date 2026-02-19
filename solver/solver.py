@@ -621,7 +621,21 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 model.add(excess >= 0)
                 objective_terms.append(10 * excess)
 
-    # 3. Note count penalty (weight 50 per active session)
+    # 3. Team consistency penalty (weight 200 per off-team session)
+    # Prefer assigning clients to therapists on the same team
+    for ci in range(num_c):
+        c_team = clients[ci].teamId
+        if not c_team:
+            continue  # No team assigned — no penalty
+        for ti_local, ti in enumerate(eligible_pairs[ci]):
+            t_team = therapists[ti].teamId
+            if t_team and t_team == c_team:
+                continue  # Same team — no penalty
+            # Different team or therapist has no team: penalize each active session
+            for k in range(len(aba_active[ci][ti_local])):
+                objective_terms.append(200 * aba_active[ci][ti_local][k])
+
+    # 4. Note count penalty (weight 50 per active session)
     for ci in range(num_c):
         for ti_local in range(len(eligible_pairs[ci])):
             for k in range(len(aba_active[ci][ti_local])):
