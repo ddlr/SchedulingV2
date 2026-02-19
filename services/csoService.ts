@@ -343,14 +343,30 @@ export class FastScheduler {
             }
         };
 
+        // Pre-compute same-team pools and sort clients: most-constrained first
+        // (fewest same-team therapists → scheduled first to maximize team adherence)
+        const sameTeamPools = new Map<number, typeof abaEligibleTherapists>();
+        shuffledC.forEach(target => {
+            const cTeam = target.c.teamId;
+            if (!cTeam) return;
+            sameTeamPools.set(target.ci, abaEligibleTherapists.filter(x =>
+                x.t.teamId === cTeam && x.t.role !== 'BCBA' && this.meetsInsurance(x.t, target.c)
+            ));
+        });
+
         // Pass 3a: Same-team only — each client can only use their own team's non-BCBA staff
         for (let s = 0; s < NUM_SLOTS; s++) {
-            const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
-            shuffledClientsForSlot.forEach(target => {
-                const cTeam = target.c.teamId;
-                if (!cTeam) return; // no team — handled in 3b
-                const sameTeamPool = abaEligibleTherapists.filter(x => x.t.teamId === cTeam && x.t.role !== 'BCBA');
-                tryAssignSlot(target, s, sameTeamPool);
+            // Most-constrained-first: clients with fewer same-team options get priority
+            const sortedClients = [...shuffledC].sort((a, b) => {
+                const aPool = sameTeamPools.get(a.ci)?.length ?? Infinity;
+                const bPool = sameTeamPools.get(b.ci)?.length ?? Infinity;
+                if (aPool !== bPool) return aPool - bPool;
+                return Math.random() - 0.5; // random tiebreak
+            });
+            sortedClients.forEach(target => {
+                const pool = sameTeamPools.get(target.ci);
+                if (!pool) return; // no team — handled in 3b
+                tryAssignSlot(target, s, pool);
             });
         }
 
@@ -465,7 +481,9 @@ export class FastScheduler {
             }
         });
 
-        // Tiered off-team penalty: cross-team BCBA penalized more than cross-team non-BCBA
+        // PRIMARY: Off-team penalty — dominates all other soft preferences
+        // Each off-team minute is penalised so heavily that the scorer will
+        // almost always prefer fewer off-team minutes over better workload balance.
         const therapistMap = new Map(this.therapists.map(t => [t.id, t]));
         const clientMap = new Map(this.clients.map(c => [c.id, c]));
         s.forEach(e => {
@@ -476,19 +494,20 @@ export class FastScheduler {
                     const tier = this.getTeamTier(therapist, client.teamId);
                     if (tier > 0) {
                         const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                        // Tier 1 (cross-team non-BCBA): 300/min, Tier 2 (same-team BCBA): 500/min, Tier 3 (cross-team BCBA): 1000/min
-                        const weight = tier === 1 ? 300 : tier === 2 ? 500 : 1000;
+                        // Tier 1 (cross-team non-BCBA): 5000/min, Tier 2 (same-team BCBA): 8000/min, Tier 3 (cross-team BCBA): 15000/min
+                        const weight = tier === 1 ? 5000 : tier === 2 ? 8000 : 15000;
                         penalty += dur * weight;
                     }
                 }
             }
         });
 
+        // SECONDARY: Workload balance (lower weight — only breaks ties among same-team-score schedules)
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
-                    penalty += (data[i].billable - data[j].billable) * 100;
+                    penalty += (data[i].billable - data[j].billable);
                 }
             }
         }

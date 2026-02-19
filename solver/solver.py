@@ -651,9 +651,10 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 objective_terms.append(10 * excess)
 
     # 3. Off-team penalty: penalise cross-team and BCBA assignments by tier
-    #    Tier 0 (same-team non-BCBA) = 0, Tier 1 (cross-team non-BCBA) = 300/slot,
-    #    Tier 2 (same-team BCBA) = 500/slot, Tier 3 (cross-team BCBA) = 1000/slot
-    _TIER_WEIGHTS = {0: 0, 1: 300, 2: 500, 3: 1000}
+    #    Dominant weights so solver strongly maximizes team adherence.
+    #    Tier 0 (same-team non-BCBA) = 0, Tier 1 (cross-team non-BCBA) = 5000/slot,
+    #    Tier 2 (same-team BCBA) = 8000/slot, Tier 3 (cross-team BCBA) = 15000/slot
+    _TIER_WEIGHTS = {0: 0, 1: 5000, 2: 8000, 3: 15000}
     for ci in range(num_c):
         for ti_local, ti in enumerate(eligible_pairs[ci]):
             tier = team_tier_map[ci][ti_local]
