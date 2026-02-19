@@ -141,15 +141,20 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     # Pre-compute eligibility and per-client limits
     # ------------------------------------------------------------------
     # eligible_pairs[ci] = list of ti indices eligible for ABA with this client
+    # Same-team therapists are listed first to help the solver prefer them
     eligible_pairs: list[list[int]] = []
     for ci, c in enumerate(clients):
-        eligible = []
+        same_team = []
+        diff_team = []
         for ti, t in enumerate(therapists):
             if t.role in ("OT", "SLP"):
                 continue  # OT/SLP don't do ABA
             if meets_insurance(t, c, iqs, default_ranks):
-                eligible.append(ti)
-        eligible_pairs.append(eligible)
+                if c.teamId and t.teamId and t.teamId == c.teamId:
+                    same_team.append(ti)
+                else:
+                    diff_team.append(ti)
+        eligible_pairs.append(same_team + diff_team)
 
     # Per-client duration and weekly limits
     min_dur_slots = []
@@ -621,19 +626,28 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 model.add(excess >= 0)
                 objective_terms.append(10 * excess)
 
-    # 3. Team consistency penalty (weight 500 per slot of off-team time)
-    # Strongly prefer assigning clients to therapists on the same team
+    # 3. Team consistency penalty (weight 900 per slot of off-team time)
+    # Strongly prefer assigning clients to therapists on the same team.
+    # At 900/slot vs coverage 1000/slot, the solver will only use off-team
+    # therapists when same-team can't cover (net benefit of only 100/slot).
     for ci in range(num_c):
         c_team = clients[ci].teamId
         if not c_team:
             continue  # No team assigned — no penalty
+        has_same_team = any(
+            therapists[ti].teamId == c_team
+            for ti in eligible_pairs[ci]
+            if therapists[ti].teamId
+        )
+        if not has_same_team:
+            continue  # No same-team therapists exist — don't penalize
         for ti_local, ti in enumerate(eligible_pairs[ci]):
             t_team = therapists[ti].teamId
             if t_team and t_team == c_team:
                 continue  # Same team — no penalty
             # Different team or therapist has no team: penalize by duration
             for k in range(len(aba_duration[ci][ti_local])):
-                objective_terms.append(500 * aba_duration[ci][ti_local][k])
+                objective_terms.append(900 * aba_duration[ci][ti_local][k])
 
     # 4. Note count penalty (weight 50 per active session)
     for ci in range(num_c):
@@ -683,6 +697,20 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 model.add_hint(aba_start[ci][ti_local][k], s)
                 model.add_hint(aba_duration[ci][ti_local][k], dur)
                 hint_count[key] = k + 1
+
+    # Hint same-team therapists as active (helps solver start with team-consistent solution)
+    for ci in range(num_c):
+        c_team = clients[ci].teamId
+        if not c_team:
+            continue
+        for ti_local, ti in enumerate(eligible_pairs[ci]):
+            t_team = therapists[ti].teamId
+            is_same = t_team and t_team == c_team
+            for k in range(len(aba_active[ci][ti_local])):
+                if is_same:
+                    model.add_hint(aba_active[ci][ti_local][k], 1)
+                else:
+                    model.add_hint(aba_active[ci][ti_local][k], 0)
 
     # ------------------------------------------------------------------
     # Solve
