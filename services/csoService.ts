@@ -286,18 +286,18 @@ export class FastScheduler {
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Already working with this client (Medicaid limit safety)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-
-                        // Priority 2: Same team as client (strict team-first)
+                        // Priority 1: Same team as client (absolute top priority — minimize cross-team assignments)
                         const clientTeam = target.c.teamId;
                         if (clientTeam) {
                             const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
                             const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
                             if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                         }
+
+                        // Priority 2: Already working with this client (minimize provider count within team)
+                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
                         // Priority 3: Role rank (BT/RBT first for billable work)
                         const aRank = this.getRoleRank(a.t.role);
@@ -450,7 +450,7 @@ export class FastScheduler {
             }
         }
 
-        // Team consistency penalty: penalize cross-team assignments
+        // Team consistency penalty: heavily penalize cross-team assignments to keep them very minimal
         const clientTeamTherapists = new Map<string, Set<string>>();
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
@@ -458,7 +458,9 @@ export class FastScheduler {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
                     if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
-                        penalty += 5000;
+                        // Weight by session duration so longer cross-team sessions are penalized more
+                        const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                        penalty += 50000 + dur * 500;
                     }
                     // Track unique off-team therapist teams per client
                     if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
@@ -473,7 +475,7 @@ export class FastScheduler {
 
         // Team fragmentation penalty: extra cost when a client's therapists come from multiple different teams
         clientTeamTherapists.forEach((offTeams) => {
-            penalty += offTeams.size * 3000;
+            penalty += offTeams.size * 20000;
         });
 
         return penalty;
