@@ -451,16 +451,29 @@ export class FastScheduler {
         }
 
         // Team consistency penalty: penalize cross-team assignments
+        const clientTeamTherapists = new Map<string, Set<string>>();
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
                     if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
-                        penalty += 500;
+                        penalty += 5000;
+                    }
+                    // Track unique off-team therapist teams per client
+                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
+                        if (!clientTeamTherapists.has(e.clientId)) {
+                            clientTeamTherapists.set(e.clientId, new Set());
+                        }
+                        clientTeamTherapists.get(e.clientId)!.add(therapist.teamId);
                     }
                 }
             }
+        });
+
+        // Team fragmentation penalty: extra cost when a client's therapists come from multiple different teams
+        clientTeamTherapists.forEach((offTeams) => {
+            penalty += offTeams.size * 3000;
         });
 
         return penalty;
