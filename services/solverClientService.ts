@@ -9,7 +9,7 @@ import {
 } from '../constants';
 
 const SOLVER_URL = import.meta.env.VITE_SOLVER_URL;
-const SOLVER_TIMEOUT_MS = 45_000; // 45s client timeout (solver has 30s internal limit)
+const SOLVER_TIMEOUT_MS = 120_000; // 120s client timeout (solver may run two phases: 45s hard + 45s soft fallback)
 
 interface SolveResponse {
     schedule: ScheduleEntry[];
@@ -17,6 +17,7 @@ interface SolveResponse {
     statusMessage: string;
     solveTimeSeconds: number;
     objectiveValue: number | null;
+    coverageMode: string; // "hard" or "soft"
 }
 
 export async function solveWithCloudSolver(
@@ -94,13 +95,14 @@ export async function solveWithCloudSolver(
 
         const data: SolveResponse = await response.json();
 
+        const coverageNote = data.coverageMode === 'soft' ? ' [soft coverage fallback]' : '';
         return {
             schedule: data.schedule,
             finalValidationErrors: [], // Will be re-validated client-side
             generations: 0,
             bestFitness: data.objectiveValue ?? 0,
             success: data.success,
-            statusMessage: data.statusMessage + ` (Solved in ${data.solveTimeSeconds}s)`,
+            statusMessage: data.statusMessage + ` (Solved in ${data.solveTimeSeconds}s)${coverageNote}`,
         };
     } catch (err: unknown) {
         clearTimeout(timeoutId);

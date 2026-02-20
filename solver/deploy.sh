@@ -24,7 +24,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --allow-unauthenticated \
   --memory 2Gi \
   --cpu 4 \
-  --timeout 60 \
+  --timeout 120 \
   --max-instances 3 \
   --set-env-vars "SOLVER_WORKERS=4"
 

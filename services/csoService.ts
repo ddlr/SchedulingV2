@@ -459,7 +459,7 @@ export class FastScheduler {
         if (errs.length > 0) {
             let p = 10000000; // Higher base penalty for any error
             errs.forEach(e => {
-                if (e.ruleId === "CLIENT_COVERAGE_GAP_AT_TIME") p += 100000; // Extremely high penalty for gaps
+                if (e.ruleId === "CLIENT_COVERAGE_GAP") p += 100000 * (e.details?.gapCount ?? 1); // Per-slot penalty for gaps
                 else if (e.ruleId === "THERAPIST_TIME_CONFLICT" || e.ruleId === "CLIENT_TIME_CONFLICT") p += 200000;
                 else if (e.ruleId === "MAX_PROVIDERS_VIOLATED") p += 500000;
                 else if (e.ruleId === "MAX_WEEKLY_HOURS_VIOLATED") p += 500000;

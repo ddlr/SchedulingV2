@@ -445,6 +445,7 @@ export const validateFullSchedule = (
       });
 
       // Coverage Gap Check (only for the currently selected/viewed date)
+      // Aggregated per client: one error per client with total gap time
       if (!isWeekendDay) {
           const clientSessionsToday = scheduleToValidate.filter(s => s.clientId === client.id && s.day === currentDayOfWeekString);
           const opStartMinutes = timeToMinutes(operatingHoursStart);
@@ -462,7 +463,7 @@ export const validateFullSchedule = (
           const mergedClientUnavailablePeriods = clientCalloutsForDay.reduce((acc, current) => {
             if (acc.length === 0) return [current];
             const last = acc[acc.length - 1];
-            if (current.start <= last.end) { 
+            if (current.start <= last.end) {
               last.end = Math.max(last.end, current.end);
             } else {
               acc.push(current);
@@ -473,13 +474,16 @@ export const validateFullSchedule = (
           const clientABASessionsToday = clientSessionsToday.filter(s => s.sessionType === 'ABA');
           const clientAHSessionsToday = clientSessionsToday.filter(s => s.sessionType.startsWith('AlliedHealth_'));
 
+          // Collect uncovered slots
+          const uncoveredSlots: number[] = [];
+
           for (let intervalStart = opStartMinutes; intervalStart < opEndMinutes; intervalStart += 15) {
             const intervalEnd = intervalStart + 15;
 
-            const isDuringClientCallout = mergedClientUnavailablePeriods.some(unavailablePeriod => 
+            const isDuringClientCallout = mergedClientUnavailablePeriods.some(unavailablePeriod =>
                 intervalStart < unavailablePeriod.end && intervalEnd > unavailablePeriod.start
             );
-            if (isDuringClientCallout) continue; 
+            if (isDuringClientCallout) continue;
 
             const isDuringAH = clientAHSessionsToday.some(session => {
                 const sessionStartMinutes = timeToMinutes(session.startTime);
@@ -495,12 +499,46 @@ export const validateFullSchedule = (
             });
 
             if (!isCoveredByABASession) {
-              allErrors.push({
-                ruleId: "CLIENT_COVERAGE_GAP_AT_TIME",
-                message: `Client ${client.name} has an ABA coverage gap on ${currentDayOfWeekString} from ${to12HourTime(minutesToTime(intervalStart))} to ${to12HourTime(minutesToTime(intervalEnd))}.`,
-                details: { clientId: client.id, time: minutesToTime(intervalStart) }
-              });
+              uncoveredSlots.push(intervalStart);
             }
+          }
+
+          // Aggregate uncovered slots into one error per client
+          if (uncoveredSlots.length > 0) {
+            // Merge contiguous slots into time ranges
+            const ranges: { start: number; end: number }[] = [];
+            let rangeStart = uncoveredSlots[0];
+            let rangeEnd = uncoveredSlots[0] + 15;
+            for (let i = 1; i < uncoveredSlots.length; i++) {
+              if (uncoveredSlots[i] === rangeEnd) {
+                rangeEnd = uncoveredSlots[i] + 15;
+              } else {
+                ranges.push({ start: rangeStart, end: rangeEnd });
+                rangeStart = uncoveredSlots[i];
+                rangeEnd = uncoveredSlots[i] + 15;
+              }
+            }
+            ranges.push({ start: rangeStart, end: rangeEnd });
+
+            const totalGapMinutes = uncoveredSlots.length * 15;
+            const totalGapHours = Math.floor(totalGapMinutes / 60);
+            const totalGapRemainingMins = totalGapMinutes % 60;
+            const gapTimeStr = totalGapHours > 0
+              ? `${totalGapHours}h${totalGapRemainingMins > 0 ? ` ${totalGapRemainingMins}m` : ''}`
+              : `${totalGapMinutes}m`;
+
+            const rangeDescriptions = ranges.map(r =>
+              `${to12HourTime(minutesToTime(r.start))}-${to12HourTime(minutesToTime(r.end))}`
+            );
+            const displayedRanges = rangeDescriptions.length <= 4
+              ? rangeDescriptions.join(', ')
+              : rangeDescriptions.slice(0, 3).join(', ') + ` (+${rangeDescriptions.length - 3} more)`;
+
+            allErrors.push({
+              ruleId: "CLIENT_COVERAGE_GAP",
+              message: `Client ${client.name} has ${gapTimeStr} of ABA coverage gaps on ${currentDayOfWeekString}: ${displayedRanges}.`,
+              details: { clientId: client.id, gapCount: uncoveredSlots.length, totalGapMinutes, ranges }
+            });
           }
       }
   });

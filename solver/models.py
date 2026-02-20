@@ -92,3 +92,4 @@ class SolveResponse(BaseModel):
     statusMessage: str
     solveTimeSeconds: float = 0.0
     objectiveValue: Optional[int] = None
+    coverageMode: str = "hard"  # "hard" = full coverage enforced, "soft" = coverage gaps possible

@@ -105,6 +105,20 @@ def get_max_weekly_minutes(c: Client, iqs: list[InsuranceQualification]) -> int:
 # ---------------------------------------------------------------------------
 
 def build_and_solve(req: SolveRequest) -> SolveResponse:
+    """Try hard coverage first; fall back to soft coverage if infeasible."""
+    result = _solve_with_coverage_mode(req, hard_coverage=True)
+    if result.success:
+        result.coverageMode = "hard"
+        return result
+
+    # Hard coverage infeasible — retry with soft coverage
+    logger.info("Hard coverage infeasible, retrying with soft coverage constraints...")
+    result = _solve_with_coverage_mode(req, hard_coverage=False)
+    result.coverageMode = "soft"
+    return result
+
+
+def _solve_with_coverage_mode(req: SolveRequest, hard_coverage: bool = True) -> SolveResponse:
     cfg = req.config
     op_start = time_to_minutes(cfg.operatingHoursStart)
     op_end = time_to_minutes(cfg.operatingHoursEnd)
@@ -603,7 +617,7 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     # ------------------------------------------------------------------
     objective_terms = []
 
-    # 1. Coverage gap penalties (weight 100_000 per uncovered slot)
+    # 1. Coverage constraints
     # Aggregate encoding: because no-overlap per client is enforced, total ABA
     # duration == number of ABA-covered slots.  No per-slot booleans needed.
     COVERAGE_GAP_WEIGHT = 100_000
@@ -628,13 +642,20 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
                 for k in range(len(aba_duration[ci][ti_local])):
                     all_dur_vars.append(aba_duration[ci][ti_local][k])
 
-            if all_dur_vars:
-                uncov = model.new_int_var(0, available, f"uncov_c{ci}")
-                model.add(uncov == available - sum(all_dur_vars))
-                objective_terms.append(COVERAGE_GAP_WEIGHT * uncov)
+            if hard_coverage:
+                # Hard constraint: require full ABA coverage for each client
+                if all_dur_vars:
+                    model.add(sum(all_dur_vars) >= available)
+                # If no eligible therapists, this client is infeasible under
+                # hard coverage — the solver will return INFEASIBLE.
             else:
-                # No eligible therapists — all slots uncovered
-                objective_terms.append(COVERAGE_GAP_WEIGHT * available)
+                # Soft constraint: penalize uncovered slots in objective
+                if all_dur_vars:
+                    uncov = model.new_int_var(0, available, f"uncov_c{ci}")
+                    model.add(uncov == available - sum(all_dur_vars))
+                    objective_terms.append(COVERAGE_GAP_WEIGHT * uncov)
+                else:
+                    objective_terms.append(COVERAGE_GAP_WEIGHT * available)
 
     # 2. Workload balance penalty (weight 10)
     # Penalize higher-ranked therapists having more billable time than lower-ranked
@@ -751,7 +772,7 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
     # Solve
     # ------------------------------------------------------------------
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 30.0
+    solver.parameters.max_time_in_seconds = 45.0
     solver.parameters.num_workers = int(os.environ.get("SOLVER_WORKERS", "4"))
     solver.parameters.log_search_progress = True
     solver.parameters.linearization_level = 2
@@ -769,8 +790,8 @@ def build_and_solve(req: SolveRequest) -> SolveResponse:
             cp_model.SELECT_MAX_VALUE,
         )
 
-    logger.info("Starting CP-SAT solve: %d clients, %d therapists, %d slots",
-                num_c, num_t, num_slots)
+    logger.info("Starting CP-SAT solve: %d clients, %d therapists, %d slots, hard_coverage=%s",
+                num_c, num_t, num_slots, hard_coverage)
 
     status = solver.solve(model)
     status_name = solver.status_name(status)
