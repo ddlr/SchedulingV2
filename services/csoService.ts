@@ -291,12 +291,20 @@ export class FastScheduler {
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                         if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 2: Role rank (BT/RBT first for billable work)
+                        // Priority 2: Same team as client (strict team-first)
+                        const clientTeam = target.c.teamId;
+                        if (clientTeam) {
+                            const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
+                            const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
+                            if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
+                        }
+
+                        // Priority 3: Role rank (BT/RBT first for billable work)
                         const aRank = this.getRoleRank(a.t.role);
                         const bRank = this.getRoleRank(b.t.role);
                         if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
 
-                        // Priority 3: Current session count (even distribution among same-tier roles)
+                        // Priority 4: Current session count (even distribution among same-tier roles)
                         return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
                     });
 
@@ -374,8 +382,8 @@ export class FastScheduler {
         let minScore = Infinity;
         // Scale iterations based on problem size - avoid excessive computation
         const problemSize = this.clients.length * this.therapists.length;
-        const iterations = problemSize > 500 ? 200 : problemSize > 200 ? 500 : problemSize > 50 ? 1000 : 2000;
-        const maxTimeMs = 8000; // Hard time limit of 8 seconds
+        const iterations = problemSize > 500 ? 1000 : problemSize > 200 ? 2500 : problemSize > 50 ? 5000 : 10000;
+        const maxTimeMs = 60000; // Hard time limit of 60 seconds
         const startTime = Date.now();
         let noImprovementCount = 0;
         for (let i = 0; i < iterations; i++) {
@@ -396,7 +404,7 @@ export class FastScheduler {
                 noImprovementCount++;
             }
             // Early exit if no improvement for a while (converged)
-            if (noImprovementCount > 150) break;
+            if (noImprovementCount > 500) break;
         }
         return best;
     }
@@ -441,6 +449,20 @@ export class FastScheduler {
                 }
             }
         }
+
+        // Team consistency penalty: penalize cross-team assignments
+        s.forEach(e => {
+            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+                if (e.clientId && e.therapistId) {
+                    const client = this.clients.find(c => c.id === e.clientId);
+                    const therapist = this.therapists.find(t => t.id === e.therapistId);
+                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
+                        penalty += 500;
+                    }
+                }
+            }
+        });
+
         return penalty;
     }
 }
