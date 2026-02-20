@@ -106,13 +106,34 @@ def get_max_weekly_minutes(c: Client, iqs: list[InsuranceQualification]) -> int:
 
 def build_and_solve(req: SolveRequest) -> SolveResponse:
     """Try hard coverage first; fall back to soft coverage if infeasible."""
-    result = _solve_with_coverage_mode(req, hard_coverage=True)
-    if result.success:
-        result.coverageMode = "hard"
-        return result
+    cfg = req.config
+    op_start = time_to_minutes(cfg.operatingHoursStart)
+    op_end = time_to_minutes(cfg.operatingHoursEnd)
+    num_slots = (op_end - op_start) // SLOT_SIZE
+    LUNCH_SLOTS = 2  # 30 minutes
 
-    # Hard coverage infeasible — retry with soft coverage
-    logger.info("Hard coverage infeasible, retrying with soft coverage constraints...")
+    num_t = len(req.therapists)
+    num_c = len(req.clients)
+
+    # Quick feasibility check: is full coverage even theoretically possible?
+    # Each therapist has at most (num_slots - LUNCH_SLOTS) available slots.
+    total_capacity = num_t * (num_slots - LUNCH_SLOTS)
+    # Conservative demand estimate: num_clients * num_slots (ignoring callouts/AH)
+    total_demand = num_c * num_slots
+
+    if total_demand <= total_capacity:
+        logger.info("Capacity check passed (%d demand <= %d capacity), trying hard coverage...",
+                     total_demand, total_capacity)
+        result = _solve_with_coverage_mode(req, hard_coverage=True)
+        if result.success:
+            result.coverageMode = "hard"
+            return result
+        logger.info("Hard coverage infeasible, retrying with soft coverage constraints...")
+    else:
+        logger.info("Skipping hard coverage: demand (%d slots) > capacity (%d slots) — "
+                     "%d clients × %d slots vs %d therapists × %d available",
+                     total_demand, total_capacity, num_c, num_slots, num_t, num_slots - LUNCH_SLOTS)
+
     result = _solve_with_coverage_mode(req, hard_coverage=False)
     result.coverageMode = "soft"
     return result
@@ -437,6 +458,21 @@ def _solve_with_coverage_mode(req: SolveRequest, hard_coverage: bool = True) -> 
         lunch_interval_var.append(iv)
 
     # ------------------------------------------------------------------
+    # Constraint: Stagger lunches (limit concurrent lunches)
+    # ------------------------------------------------------------------
+    # Without this, the solver may schedule all lunches at 11:00 AM,
+    # leaving no therapists to cover clients during that time.
+    # Allow at most ~25% of therapists on lunch simultaneously.
+    max_concurrent_lunches = max(1, num_t // 4)
+    logger.info("Lunch staggering: max %d concurrent lunches (of %d therapists)",
+                max_concurrent_lunches, num_t)
+    model.add_cumulative(
+        [lunch_interval_var[ti] for ti in range(num_t)],
+        [1] * num_t,
+        max_concurrent_lunches,
+    )
+
+    # ------------------------------------------------------------------
     # Constraint: No-overlap per therapist
     # ------------------------------------------------------------------
     for ti in range(num_t):
@@ -622,34 +658,53 @@ def _solve_with_coverage_mode(req: SolveRequest, hard_coverage: bool = True) -> 
     # duration == number of ABA-covered slots.  No per-slot booleans needed.
     COVERAGE_GAP_WEIGHT = 100_000
     if not is_weekend:
+        # Compute total capacity and demand for fair-share minimum coverage
+        total_therapist_capacity = num_t * (num_slots - LUNCH_SLOTS)
+        total_client_available = 0
+        client_available_slots: list[int] = []
+
         for ci in range(num_c):
-            # Count slots covered by allied health (fixed)
-            ah_covered_count = 0
-            for ah in ah_entries:
-                if ah["ci"] == ci:
-                    ah_covered_count += ah["length"]
+            ah_covered = sum(ah["length"] for ah in ah_entries if ah["ci"] == ci)
+            blocked = sum(1 for s in range(num_slots) if client_slot_blocked[ci][s])
+            avail = num_slots - blocked - ah_covered
+            client_available_slots.append(max(0, avail))
+            total_client_available += max(0, avail)
 
-            # Count blocked slots
-            blocked_count = sum(1 for s in range(num_slots) if client_slot_blocked[ci][s])
+        # Fair-share: each client is guaranteed at least their proportional share
+        # of therapist capacity.  E.g. 12 therapists × 30 slots = 360 capacity
+        # shared among 40 clients → each client gets at least ~9 slots (2h 15m).
+        if total_client_available > 0:
+            capacity_ratio = min(1.0, total_therapist_capacity / total_client_available)
+        else:
+            capacity_ratio = 1.0
 
-            available = num_slots - blocked_count - ah_covered_count
+        for ci in range(num_c):
+            available = client_available_slots[ci]
             if available <= 0:
                 continue
 
-            # Sum of all ABA durations for this client
             all_dur_vars = []
             for ti_local in range(len(eligible_pairs[ci])):
                 for k in range(len(aba_duration[ci][ti_local])):
                     all_dur_vars.append(aba_duration[ci][ti_local][k])
 
             if hard_coverage:
-                # Hard constraint: require full ABA coverage for each client
                 if all_dur_vars:
                     model.add(sum(all_dur_vars) >= available)
-                # If no eligible therapists, this client is infeasible under
-                # hard coverage — the solver will return INFEASIBLE.
             else:
-                # Soft constraint: penalize uncovered slots in objective
+                # Hard minimum: each client gets at least their fair share
+                # (proportional to therapist capacity vs total demand)
+                min_coverage = max(min_dur_slots[ci], int(available * capacity_ratio * 0.85))
+                min_coverage = min(min_coverage, available)  # Can't exceed available
+                # Also respect remaining weekly budget
+                min_coverage = min(min_coverage, remaining_weekly_slots[ci])
+
+                if all_dur_vars and min_coverage > 0:
+                    model.add(sum(all_dur_vars) >= min_coverage)
+                    logger.debug("Client %d: min coverage %d/%d slots (%.0f%%)",
+                                 ci, min_coverage, available, 100 * min_coverage / available)
+
+                # Soft penalty for remaining uncovered slots above minimum
                 if all_dur_vars:
                     uncov = model.new_int_var(0, available, f"uncov_c{ci}")
                     model.add(uncov == available - sum(all_dur_vars))
@@ -708,11 +763,31 @@ def _solve_with_coverage_mode(req: SolveRequest, hard_coverage: bool = True) -> 
                 for k in range(len(aba_duration[ci][ti_local])):
                     objective_terms.append(w * aba_duration[ci][ti_local][k])
 
-    # 4. Note count penalty (weight 50 per active session)
+    # 4. Note count penalty (weight 500 per active session) — discourages
+    #    fragmentation into many short sessions.  Each additional session
+    #    adds 500 to the objective (= 5 uncovered slots equivalent),
+    #    making the solver prefer fewer, longer sessions.
     for ci in range(num_c):
         for ti_local in range(len(eligible_pairs[ci])):
             for k in range(len(aba_active[ci][ti_local])):
-                objective_terms.append(50 * aba_active[ci][ti_local][k])
+                objective_terms.append(500 * aba_active[ci][ti_local][k])
+
+    # 5. Max billable sessions per therapist (hard cap at 4 notes)
+    #    Prevents any therapist from having more than 4 ABA sessions.
+    MAX_NOTES_PER_THERAPIST = 4
+    for ti in range(num_t):
+        ti_sessions = []
+        for ci in range(num_c):
+            if ti in ti_to_local[ci]:
+                tl = ti_to_local[ci][ti]
+                ti_sessions.extend(aba_active[ci][tl])
+        # Also count allied health sessions
+        for ah in ah_entries:
+            if ti in ah["eligible_tis"]:
+                idx = ah["eligible_tis"].index(ti)
+                ti_sessions.append(ah["choice_vars"][idx])
+        if ti_sessions:
+            model.add(sum(ti_sessions) <= MAX_NOTES_PER_THERAPIST)
 
     if objective_terms:
         model.minimize(sum(objective_terms))
