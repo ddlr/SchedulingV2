@@ -405,11 +405,14 @@ const App: React.FC = () => {
     setError(null); setGaStatusMessage(null);
 
     try {
-      // Use CSO Algorithm from service. Pass existing schedule to respect weekly hour limits.
-      const result = await runCsoAlgorithm(clients, therapists, availableInsuranceQualifications, selectedDate, callouts, schedule || []);
+      const scheduledDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
+
+      // Only pass other-day entries so the selected day is built fresh with all current clients/therapists.
+      // Other-day entries are still needed for cross-day constraints (weekly hour limits).
+      const otherDaySchedule = (schedule || []).filter(e => e.day !== scheduledDayOfWeek);
+      const result = await runCsoAlgorithm(clients, therapists, availableInsuranceQualifications, selectedDate, callouts, otherDaySchedule);
 
       const newDayEntries = result.schedule ? result.schedule.map(entry => ({...entry, id: entry.id || generateScheduleEntryId() })) : [];
-      const scheduledDayOfWeek = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][selectedDate.getDay()];
 
       // Merge with other days
       const otherDayEntries = (schedule || []).filter(e => e.day !== scheduledDayOfWeek);
