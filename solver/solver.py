@@ -589,6 +589,25 @@ def _solve_with_coverage_mode(req: SolveRequest, hard_coverage: bool = True) -> 
             model.add(sum(all_durations) + ah_slot_total <= remaining_weekly_slots[ci])
 
     # ------------------------------------------------------------------
+    # Constraint: Every client gets at least one ABA session (fair share)
+    # ------------------------------------------------------------------
+    # With more clients than therapist capacity allows for full coverage,
+    # ensure no client is left with zero ABA time.  This is feasible as
+    # long as total_sessions_needed <= total_therapist_capacity:
+    #   40 clients × 1 session × 4 slots (60 min) = 160 slots needed
+    #   12 therapists × 30 slots available = 360 — plenty of headroom.
+    if not is_weekend:
+        for ci in range(num_c):
+            if ci in zero_budget_clients:
+                continue
+            any_active = []
+            for ti_local in range(len(eligible_pairs[ci])):
+                for k in range(len(aba_active[ci][ti_local])):
+                    any_active.append(aba_active[ci][ti_local][k])
+            if any_active:
+                model.add(sum(any_active) >= 1)
+
+    # ------------------------------------------------------------------
     # Constraint: Session pair symmetry breaking + back-to-back gap
     # ------------------------------------------------------------------
     for ci in range(num_c):
