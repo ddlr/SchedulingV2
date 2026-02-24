@@ -329,15 +329,17 @@ export class FastScheduler {
             });
         });
 
-        // Pass 3: ABA Sessions — Two-pass approach to maximize same-team assignments
-        // Pass 3a: ONLY assign same-team therapists. Gaps are left open for pass 3b.
-        // Pass 3b: Fill remaining gaps with any eligible therapist (cross-team fallback).
-        // This prevents cross-team "contamination" where one cross-team slot makes
-        // that therapist "known" and snowballs into more cross-team assignments.
+        // Pass 3: ABA Sessions — Four-pass approach to maximize same-team and minimize senior direct time
+        // Pass 3a: Same-team, non-senior only (BT/RBT/STAR fill first)
+        // Pass 3b: Same-team, any role (BCBA/CF fill remaining team gaps)
+        // Pass 3c: Cross-team, non-senior only
+        // Pass 3d: Cross-team, any role (absolute last resort)
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
+        const SENIOR_RANK_THRESHOLD = 5; // BCBA (6) and CF (5) are senior — minimize their direct time
 
-        for (let pass = 0; pass < 2; pass++) {
-            const isSameTeamOnly = pass === 0;
+        for (let pass = 0; pass < 4; pass++) {
+            const isSameTeamOnly = pass < 2;
+            const isNonSeniorOnly = pass === 0 || pass === 2;
 
             for (let s = 0; s < NUM_SLOTS; s++) {
                 const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
@@ -345,24 +347,27 @@ export class FastScheduler {
                     if (tracker.isCFree(target.ci, s, 1)) {
                         const clientTeam = target.c.teamId;
 
-                        // Filter candidates: same-team only in pass 0, all eligible in pass 1
+                        // Filter candidates based on pass constraints
                         let candidates = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
                         if (isSameTeamOnly && clientTeam) {
                             candidates = candidates.filter(x => x.t.teamId === clientTeam);
                         }
+                        if (isNonSeniorOnly) {
+                            candidates = candidates.filter(x => this.getRoleRank(x.t.role) < SENIOR_RANK_THRESHOLD);
+                        }
 
                         const quals = candidates.sort((a, b) => {
-                            // Priority 1: Already working with this client (minimize provider count)
-                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                            if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-
-                            // Priority 2: Same team (relevant in pass 1 cross-team fallback)
+                            // Priority 1: Same team as client
                             if (clientTeam) {
                                 const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
                                 const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
                                 if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                             }
+
+                            // Priority 2: Already working with this client (minimize provider count)
+                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                            if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
                             // Priority 3: Role rank (BT/RBT first for billable work)
                             const aRank = this.getRoleRank(a.t.role);
@@ -500,14 +505,21 @@ export class FastScheduler {
             }
         });
 
+        const SENIOR_RANK = 5; // BCBA (6) and CF (5)
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
+
+        // Direct penalty for senior staff billable time — every minute of BCBA/CF direct time is costly
+        data.forEach(d => {
+            if (d.p >= SENIOR_RANK) {
+                penalty += d.billable * 300;
+            }
+        });
+
+        // Relative imbalance: penalize when senior staff have more billable than junior staff
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
-                // If therapist i is higher rank (BCBA) than therapist j (BT)
-                // but therapist i has MORE billable time than j, penalize.
-                // We want to preserve 'blank' time for senior staff.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
-                    penalty += (data[i].billable - data[j].billable) * 100;
+                    penalty += (data[i].billable - data[j].billable) * 200;
                 }
             }
         }
