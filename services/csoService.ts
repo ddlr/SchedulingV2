@@ -200,23 +200,73 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Lunches
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
-        shuffledT.forEach(q => {
-            // Check if already has a lunch or indirect task in the lunch window from initialSchedule
+        // Pass 1: Lunches — stagger within teams so same-team therapists don't all lunch at once
+        const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+        const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+
+        // Group therapists by team, then interleave so we schedule one from each team in turn
+        const teamGroups = new Map<string, {t: Therapist, ti: number}[]>();
+        this.therapists.forEach((t, ti) => {
+            const key = t.teamId || '__no_team__';
+            if (!teamGroups.has(key)) teamGroups.set(key, []);
+            teamGroups.get(key)!.push({t, ti});
+        });
+        // Shuffle within each team for randomness
+        teamGroups.forEach(members => members.sort(() => Math.random() - 0.5));
+
+        // Track how many from each team are on lunch at each slot to stagger them
+        const teamLunchAtSlot = new Map<string, number[]>();
+        teamGroups.forEach((_, key) => teamLunchAtSlot.set(key, new Array(NUM_SLOTS).fill(0)));
+
+        // Interleave: round-robin across teams so lunches spread out
+        const teamKeys = [...teamGroups.keys()].sort(() => Math.random() - 0.5);
+        const maxTeamSize = Math.max(...[...teamGroups.values()].map(g => g.length));
+        const interleavedT: {t: Therapist, ti: number}[] = [];
+        for (let i = 0; i < maxTeamSize; i++) {
+            for (const key of teamKeys) {
+                const members = teamGroups.get(key)!;
+                if (i < members.length) interleavedT.push(members[i]);
+            }
+        }
+
+        interleavedT.forEach(q => {
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
-            const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
-            const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+            const teamKey = q.t.teamId || '__no_team__';
+            const teamSlots = teamLunchAtSlot.get(teamKey)!;
+            const teamSize = teamGroups.get(teamKey)!.length;
+            // At most half the team on lunch at the same time (minimum 1)
+            const maxTeamConcurrent = Math.max(1, Math.floor(teamSize / 2));
+
             const opts = [];
             for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
+            // Prefer slots where fewer teammates are already on lunch, then fewer global lunches
+            opts.sort((a, b) => {
+                const teamA = teamSlots[a] + teamSlots[a+1];
+                const teamB = teamSlots[b] + teamSlots[b+1];
+                if (teamA !== teamB) return teamA - teamB;
+                return (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5);
+            });
             for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches
+                    && teamSlots[s] < maxTeamConcurrent && teamSlots[s+1] < maxTeamConcurrent) {
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
+                    teamSlots[s]++; teamSlots[s+1]++;
                     break;
+                }
+            }
+            // Fallback: if team constraint too tight, ignore it but still stagger globally
+            if (!schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) {
+                for (const s of opts) {
+                    if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                        schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                        tracker.book(q.ti, -1, s, 2);
+                        lunchCount[s]++; lunchCount[s+1]++;
+                        teamSlots[s]++; teamSlots[s+1]++;
+                        break;
+                    }
                 }
             }
         });
@@ -279,75 +329,87 @@ export class FastScheduler {
             });
         });
 
-        // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        // Pass 3: ABA Sessions — Two-pass approach to maximize same-team assignments
+        // Pass 3a: ONLY assign same-team therapists. Gaps are left open for pass 3b.
+        // Pass 3b: Fill remaining gaps with any eligible therapist (cross-team fallback).
+        // This prevents cross-team "contamination" where one cross-team slot makes
+        // that therapist "known" and snowballs into more cross-team assignments.
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
-        for (let s = 0; s < NUM_SLOTS; s++) {
-            const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
-            shuffledClientsForSlot.forEach(target => {
-                if (tracker.isCFree(target.ci, s, 1)) {
-                    const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Same team as client (absolute top priority — minimize cross-team assignments)
+
+        for (let pass = 0; pass < 2; pass++) {
+            const isSameTeamOnly = pass === 0;
+
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
+                shuffledClientsForSlot.forEach(target => {
+                    if (tracker.isCFree(target.ci, s, 1)) {
                         const clientTeam = target.c.teamId;
-                        if (clientTeam) {
-                            const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
-                            const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
-                            if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
+
+                        // Filter candidates: same-team only in pass 0, all eligible in pass 1
+                        let candidates = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
+                        if (isSameTeamOnly && clientTeam) {
+                            candidates = candidates.filter(x => x.t.teamId === clientTeam);
                         }
 
-                        // Priority 2: Already working with this client (minimize provider count within team)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
+                        const quals = candidates.sort((a, b) => {
+                            // Priority 1: Already working with this client (minimize provider count)
+                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                            if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 3: Role rank (BT/RBT first for billable work)
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
-
-                        // Priority 4: Current session count (even distribution among same-tier roles)
-                        return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
-                    });
-
-                    for (const q of quals) {
-                        // Check provider limit
-                        const maxP = this.getMaxProviders(target.c);
-                        if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
-
-                        // Try session lengths from max down to min required
-                        const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
-                        const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
-                        const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
-                        const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
-
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-
-                        for (let len = startLenSlots; len >= minLenSlots; len--) {
-                            if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
-                                // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
-                                let gapAfter = 0;
-                                let tempS = s + len;
-                                while(tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) {
-                                    gapAfter++;
-                                    tempS++;
-                                }
-                                if (gapAfter > 0 && gapAfter < minLenSlots) continue;
-
-                                if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
-
-                                // Final duration safety check
-                                if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
-
-                                schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
-                                tracker.book(q.ti, target.ci, s, len);
-                                tSessionCount[q.ti]++;
-                                clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                                break;
+                            // Priority 2: Same team (relevant in pass 1 cross-team fallback)
+                            if (clientTeam) {
+                                const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
+                                const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
+                                if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                             }
+
+                            // Priority 3: Role rank (BT/RBT first for billable work)
+                            const aRank = this.getRoleRank(a.t.role);
+                            const bRank = this.getRoleRank(b.t.role);
+                            if (aRank !== bRank) return aRank - bRank;
+
+                            // Priority 4: Current session count (even distribution)
+                            return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
+                        });
+
+                        for (const q of quals) {
+                            const maxP = this.getMaxProviders(target.c);
+                            if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
+
+                            const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
+                            const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                            const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
+                            const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+
+                            const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+
+                            for (let len = startLenSlots; len >= minLenSlots; len--) {
+                                if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
+                                    let gapAfter = 0;
+                                    let tempS = s + len;
+                                    while(tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) {
+                                        gapAfter++;
+                                        tempS++;
+                                    }
+                                    if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+
+                                    if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
+
+                                    if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
+
+                                    schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
+                                    tracker.book(q.ti, target.ci, s, len);
+                                    tSessionCount[q.ti]++;
+                                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                                    break;
+                                }
+                            }
+                            if (!tracker.isCFree(target.ci, s, 1)) break;
                         }
-                        if (!tracker.isCFree(target.ci, s, 1)) break;
                     }
-                }
-            });
+                });
+            }
         }
 
         // Filter out lunches for people with no billable work
