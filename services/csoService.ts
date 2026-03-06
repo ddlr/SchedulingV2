@@ -373,8 +373,9 @@ export class FastScheduler {
                             if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
                             // Priority 3: Role rank (lower rank preferred for billable work)
-                            const aRank = this.getRoleRank(a.t.role);
-                            const bRank = this.getRoleRank(b.t.role);
+                            // CF is a flex gap-filler with no own caseload — sort alongside RBT so they actually get picked
+                            const aRank = a.t.role === 'CF' ? 1 : this.getRoleRank(a.t.role);
+                            const bRank = b.t.role === 'CF' ? 1 : this.getRoleRank(b.t.role);
                             if (aRank !== bRank) return aRank - bRank;
 
                             // Priority 4: Current session count (even distribution)
@@ -514,7 +515,8 @@ export class FastScheduler {
         });
 
         const BCBA_RANK = 6; // Only BCBA is senior — CF (5) is a flex role that takes sessions freely
-        const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
+        // CF treated as rank 1 (RBT-level) so the imbalance penalty doesn't punish CF billable time
+        const data = this.therapists.map(t => ({ p: t.role === 'CF' ? 1 : this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
 
         // Direct penalty for BCBA billable time — every minute of BCBA direct time is costly
         // CF is excluded: they don't have their own clients and should be filling gaps
