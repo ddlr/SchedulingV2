@@ -140,9 +140,9 @@ export const validateSessionEntry = (
     if (!clientData) {
         errors.push({ ruleId: "CLIENT_NOT_FOUND", message: `Client "${clientName}" (ID: ${clientId}) not found.`});
     } else {
-        // OT/SLP therapists don't need to meet client insurance requirements for allied health sessions
-        const isAlliedHealth = sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP';
-        if (therapistData && clientData.insuranceRequirements.length > 0 && !isAlliedHealth) {
+        // OT/SLP/CF therapists are exempt from client insurance requirement checks
+        const isExemptRole = therapistData && (therapistData.role === 'OT' || therapistData.role === 'SLP' || therapistData.role === 'CF');
+        if (therapistData && clientData.insuranceRequirements.length > 0 && !isExemptRole) {
             const unmetRequirements = clientData.insuranceRequirements.filter(reqId => {
               // 1. Direct match in qualifications
               if (therapistData.qualifications.includes(reqId)) return false;
@@ -170,7 +170,7 @@ export const validateSessionEntry = (
 
         // Min/Max Session Duration Check — only for ABA sessions (Allied Health has its own time constraints)
         const duration = endTimeMinutes - startTimeMinutes;
-        if (!isAlliedHealth) clientData.insuranceRequirements.forEach(reqId => {
+        if (!isExemptRole) clientData.insuranceRequirements.forEach(reqId => {
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
               if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes) {

@@ -68,6 +68,8 @@ export class FastScheduler {
     }
 
     private meetsInsurance(t: Therapist, c: Client): boolean {
+        // OT/SLP only do allied health; CF is a flex role that can take any session
+        if (t.role === 'OT' || t.role === 'SLP' || t.role === 'CF') return true;
         if (c.insuranceRequirements.length === 0) return true;
         return c.insuranceRequirements.every(reqId => {
             if (t.qualifications.includes(reqId)) return true;
