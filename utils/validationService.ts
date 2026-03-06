@@ -168,9 +168,9 @@ export const validateSessionEntry = (
             }
         }
 
-        // Min/Max Session Duration Check
+        // Min/Max Session Duration Check — only for ABA sessions (Allied Health has its own time constraints)
         const duration = endTimeMinutes - startTimeMinutes;
-        clientData.insuranceRequirements.forEach(reqId => {
+        if (!isAlliedHealth) clientData.insuranceRequirements.forEach(reqId => {
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
               if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes) {
@@ -418,7 +418,8 @@ export const validateFullSchedule = (
           });
 
           if (maxProvidersAllowed !== Infinity) {
-              const uniqueTherapists = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_')).map(s => s.therapistId));
+              // Only count ABA providers toward the limit — OT/SLP are separate and don't count
+              const uniqueTherapists = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA').map(s => s.therapistId));
               if (uniqueTherapists.size > maxProvidersAllowed) {
                   allErrors.push({
                       ruleId: "MAX_PROVIDERS_VIOLATED",
