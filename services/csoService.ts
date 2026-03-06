@@ -330,12 +330,12 @@ export class FastScheduler {
         });
 
         // Pass 3: ABA Sessions — Four-pass approach to maximize same-team and minimize senior direct time
-        // Pass 3a: Same-team, non-senior only (BT/RBT/STAR fill first)
-        // Pass 3b: Same-team, any role (BCBA/CF fill remaining team gaps)
-        // Pass 3c: Cross-team, non-senior only
+        // Pass 3a: Same-team, non-BCBA only (BT/RBT/STAR/CF fill first — CF is a flex role with no own clients)
+        // Pass 3b: Same-team, any role (BCBA fills remaining team gaps)
+        // Pass 3c: Cross-team, non-BCBA only (CF can cross teams freely)
         // Pass 3d: Cross-team, any role (absolute last resort)
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
-        const SENIOR_RANK_THRESHOLD = 5; // BCBA (6) and CF (5) are senior — minimize their direct time
+        const SENIOR_RANK_THRESHOLD = 6; // Only BCBA (6) is senior — CF (5) is a flex role that fills gaps freely
 
         for (let pass = 0; pass < 4; pass++) {
             const isSameTeamOnly = pass < 2;
@@ -348,9 +348,10 @@ export class FastScheduler {
                         const clientTeam = target.c.teamId;
 
                         // Filter candidates based on pass constraints
+                        // CF therapists are flex workers — they can cross teams even in same-team passes
                         let candidates = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c));
                         if (isSameTeamOnly && clientTeam) {
-                            candidates = candidates.filter(x => x.t.teamId === clientTeam);
+                            candidates = candidates.filter(x => x.t.teamId === clientTeam || x.t.role === 'CF');
                         }
                         if (isNonSeniorOnly) {
                             candidates = candidates.filter(x => this.getRoleRank(x.t.role) < SENIOR_RANK_THRESHOLD);
@@ -510,12 +511,13 @@ export class FastScheduler {
             }
         });
 
-        const SENIOR_RANK = 5; // BCBA (6) and CF (5)
+        const BCBA_RANK = 6; // Only BCBA is senior — CF (5) is a flex role that takes sessions freely
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
 
-        // Direct penalty for senior staff billable time — every minute of BCBA/CF direct time is costly
+        // Direct penalty for BCBA billable time — every minute of BCBA direct time is costly
+        // CF is excluded: they don't have their own clients and should be filling gaps
         data.forEach(d => {
-            if (d.p >= SENIOR_RANK) {
+            if (d.p >= BCBA_RANK) {
                 penalty += d.billable * 300;
             }
         });
@@ -536,13 +538,15 @@ export class FastScheduler {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
-                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
+                    // CF therapists are flex workers — no cross-team penalty for them
+                    const isCfTherapist = therapist?.role === 'CF';
+                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId && !isCfTherapist) {
                         // Weight by session duration so longer cross-team sessions are penalized more
                         const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
                         penalty += 50000 + dur * 500;
                     }
-                    // Track unique off-team therapist teams per client
-                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
+                    // Track unique off-team therapist teams per client (exclude CF flex workers)
+                    if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId && !isCfTherapist) {
                         if (!clientTeamTherapists.has(e.clientId)) {
                             clientTeamTherapists.set(e.clientId, new Set());
                         }
