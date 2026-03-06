@@ -360,10 +360,10 @@ export class FastScheduler {
                         }
 
                         const quals = candidates.sort((a, b) => {
-                            // Priority 1: Same team as client
+                            // Priority 1: Same team as client (CF is a flex role — treat as same-team for all clients)
                             if (clientTeam) {
-                                const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
-                                const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
+                                const aSameTeam = (a.t.teamId === clientTeam || a.t.role === 'CF') ? 0 : 1;
+                                const bSameTeam = (b.t.teamId === clientTeam || b.t.role === 'CF') ? 0 : 1;
                                 if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                             }
 
@@ -372,9 +372,9 @@ export class FastScheduler {
                             const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                             if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                            // Priority 3: Role rank (BT/RBT first for billable work; CF treated as lowest rank since they're flex gap-fillers)
-                            const aRank = a.t.role === 'CF' ? 0 : this.getRoleRank(a.t.role);
-                            const bRank = b.t.role === 'CF' ? 0 : this.getRoleRank(b.t.role);
+                            // Priority 3: Role rank (lower rank preferred for billable work)
+                            const aRank = this.getRoleRank(a.t.role);
+                            const bRank = this.getRoleRank(b.t.role);
                             if (aRank !== bRank) return aRank - bRank;
 
                             // Priority 4: Current session count (even distribution)
