@@ -140,7 +140,9 @@ export const validateSessionEntry = (
     if (!clientData) {
         errors.push({ ruleId: "CLIENT_NOT_FOUND", message: `Client "${clientName}" (ID: ${clientId}) not found.`});
     } else {
-        if (therapistData && clientData.insuranceRequirements.length > 0) {
+        // OT/SLP therapists don't need to meet client insurance requirements for allied health sessions
+        const isAlliedHealth = sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP';
+        if (therapistData && clientData.insuranceRequirements.length > 0 && !isAlliedHealth) {
             const unmetRequirements = clientData.insuranceRequirements.filter(reqId => {
               // 1. Direct match in qualifications
               if (therapistData.qualifications.includes(reqId)) return false;

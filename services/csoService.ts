@@ -387,7 +387,12 @@ export class FastScheduler {
                             const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                             const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
 
-                            const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+                            const maxLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+
+                            // Randomize target session length for variability — try lengths
+                            // from a random point in [min..max] down to min, creating diverse
+                            // schedules across iterations for the optimizer to choose from.
+                            const startLenSlots = minLenSlots + Math.floor(Math.random() * (maxLenSlots - minLenSlots + 1));
 
                             for (let len = startLenSlots; len >= minLenSlots; len--) {
                                 if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
