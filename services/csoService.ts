@@ -363,8 +363,9 @@ export class FastScheduler {
                             }
 
                             // Priority 2: Already working with this client (minimize provider count)
-                            const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                            const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                            // CF is always treated as "known" so it competes equally with assigned therapists
+                            const aIsKnown = (tracker.cT[target.ci].has(a.ti) || a.t.role === 'CF') ? 0 : 1;
+                            const bIsKnown = (tracker.cT[target.ci].has(b.ti) || b.t.role === 'CF') ? 0 : 1;
                             if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
                             // Priority 3: Role rank (lower rank preferred for billable work)
@@ -890,6 +891,20 @@ export class FastScheduler {
         // Team fragmentation penalty: extra cost when a client's therapists come from multiple different teams
         clientTeamTherapists.forEach((offTeams) => {
             penalty += offTeams.size * 20000;
+        });
+
+        // CF utilization penalty: penalize schedules where CF therapists have no billable work
+        // CF is a flex gap-filler and should always be utilized when there are clients to cover
+        const avgBillable = data.length > 0 ? data.reduce((sum, d) => sum + d.billable, 0) / data.length : 0;
+        this.therapists.forEach(t => {
+            if (t.role === 'CF') {
+                const cfBillable = billableTimes.get(t.id) || 0;
+                if (cfBillable === 0 && avgBillable > 0) {
+                    penalty += 100000; // Heavy penalty for completely idle CF
+                } else if (cfBillable > 0 && cfBillable < avgBillable * 0.5) {
+                    penalty += (avgBillable * 0.5 - cfBillable) * 100; // Moderate penalty for underutilized CF
+                }
+            }
         });
 
         return penalty;
