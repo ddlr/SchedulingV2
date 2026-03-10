@@ -780,9 +780,9 @@ export class FastScheduler {
         let minScore = Infinity;
         // Scale iterations based on problem size - avoid excessive computation
         const problemSize = this.clients.length * this.therapists.length;
-        const iterations = problemSize > 500 ? 2000 : problemSize > 200 ? 5000 : problemSize > 50 ? 10000 : 20000;
-        // Scale time limit with problem complexity, cap at 3 minutes, reserve 10s for repair pass
-        const complexityFactor = Math.min(3, Math.max(1, problemSize / 100));
+        const iterations = problemSize > 500 ? 8000 : problemSize > 200 ? 20000 : problemSize > 50 ? 40000 : 60000;
+        // Scale time limit with problem complexity, cap at 5 minutes, reserve 10s for repair pass
+        const complexityFactor = Math.min(5, Math.max(1, problemSize / 100));
         const maxTimeMs = 60000 * complexityFactor;
         const startTime = Date.now();
         let noImprovementCount = 0;
@@ -804,8 +804,8 @@ export class FastScheduler {
                 noImprovementCount++;
             }
             // Early exit only when schedule is already valid; keep trying longer when errors remain
-            if (noImprovementCount > 500 && minScore === 0) break;
-            if (noImprovementCount > 2000) break;
+            if (noImprovementCount > 1000 && minScore === 0) break;
+            if (noImprovementCount > 5000) break;
         }
         if (minScore > 0) {
             best = this.repairSchedule(best, initialSchedule);
