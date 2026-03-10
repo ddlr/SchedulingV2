@@ -421,6 +421,44 @@ export class FastScheduler {
             }
         }
 
+        // Pass 4: CF gap-fill — use CF therapists to cover any remaining client gaps
+        const cfTherapists = abaEligibleTherapists.filter(x => x.t.role === 'CF');
+        if (cfTherapists.length > 0) {
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                shuffledC.forEach(target => {
+                    if (tracker.isCFree(target.ci, s, 1)) {
+                        for (const cf of cfTherapists) {
+                            const maxP = this.getMaxProviders(target.c);
+                            if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(cf.ti)) continue;
+
+                            const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
+                            const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
+                            const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
+                            const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+                            const maxLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+
+                            for (let len = maxLenSlots; len >= minLenSlots; len--) {
+                                if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(cf.ti, s, len)) {
+                                    let gapAfter = 0;
+                                    let tempS = s + len;
+                                    while (tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
+                                    if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                                    if (this.isBTB(schedule, target.c.id, cf.t.id, s, len)) continue;
+
+                                    schedule.push(this.ent(target.ci, cf.ti, s, len, 'ABA'));
+                                    tracker.book(cf.ti, target.ci, s, len);
+                                    tSessionCount[cf.ti]++;
+                                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                                    break;
+                                }
+                            }
+                            if (!tracker.isCFree(target.ci, s, 1)) break;
+                        }
+                    }
+                });
+            }
+        }
+
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
@@ -567,8 +605,9 @@ export class FastScheduler {
                     const candidates = abaEligible
                         .filter(t => this.meetsInsurance(t, client))
                         .sort((a, b) => {
-                            const aKnown = existingProviderIds.has(a.id) ? 0 : 1;
-                            const bKnown = existingProviderIds.has(b.id) ? 0 : 1;
+                            // Known providers first, then CF (flex gap-fillers), then others
+                            const aKnown = existingProviderIds.has(a.id) ? 0 : (a.role === 'CF' ? 1 : 2);
+                            const bKnown = existingProviderIds.has(b.id) ? 0 : (b.role === 'CF' ? 1 : 2);
                             return aKnown - bKnown;
                         });
 
