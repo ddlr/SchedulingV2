@@ -344,6 +344,37 @@ export class FastScheduler {
                                 break;
                             }
                         }
+                        // Pseudo-split: allow short ABA adjacent to AlliedHealth at edge of day
+                        if (tracker.isCFree(target.ci, s, 1)) {
+                            let maxFreeLen = 0;
+                            while (s + maxFreeLen < NUM_SLOTS && tracker.isCFree(target.ci, s + maxFreeLen, 1)) maxFreeLen++;
+
+                            if (maxFreeLen > 0 && maxFreeLen < minLenSlots) {
+                                const blockSlot = s + maxFreeLen;
+                                const isBlockedByAH = blockSlot < NUM_SLOTS && schedule.some(e =>
+                                    e.clientId === target.c.id &&
+                                    e.sessionType.startsWith('AlliedHealth_') &&
+                                    timeToMinutes(e.startTime) === OP_START + blockSlot * SLOT_SIZE
+                                );
+                                const isAfterAH = s > 0 && schedule.some(e =>
+                                    e.clientId === target.c.id &&
+                                    e.sessionType.startsWith('AlliedHealth_') &&
+                                    timeToMinutes(e.endTime) === OP_START + s * SLOT_SIZE
+                                );
+
+                                const isStartEdge = s === 0 || !tracker.isCFree(target.ci, s - 1, 1);
+                                const isEndEdge = s + maxFreeLen >= NUM_SLOTS;
+
+                                if ((isBlockedByAH && isStartEdge) || (isAfterAH && isEndEdge)) {
+                                    if (tracker.isTFree(q.ti, s, maxFreeLen) && !this.isBTB(schedule, target.c.id, q.t.id, s, maxFreeLen)) {
+                                        schedule.push(this.ent(target.ci, q.ti, s, maxFreeLen, 'ABA'));
+                                        tracker.book(q.ti, target.ci, s, maxFreeLen);
+                                        tSessionCount[q.ti]++;
+                                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (maxFreeLen * SLOT_SIZE));
+                                    }
+                                }
+                            }
+                        }
                         if (!tracker.isCFree(target.ci, s, 1)) break;
                     }
                 }
