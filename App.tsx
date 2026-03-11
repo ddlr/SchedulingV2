@@ -505,38 +505,13 @@ const App: React.FC = () => {
   };
 
   const displayedTherapists = useMemo(() => {
-    let result = [...therapists];
-    if (selectedTeamIds.length > 0) {
-        result = result.filter(t => t.teamId && selectedTeamIds.includes(t.teamId));
-    }
-    if (selectedTherapistIds.length > 0) {
-        result = result.filter(t => selectedTherapistIds.includes(t.id));
-    }
-    return result.sort(sortStaffHierarchically);
-  }, [therapists, selectedTeamIds, selectedTherapistIds]);
+    return [...therapists].sort(sortStaffHierarchically);
+  }, [therapists]);
 
   const displayedSchedule = useMemo(() => {
     if (!schedule) return null;
-
-    const visibleTherapistIds = new Set(displayedTherapists.map(t => t.id));
-
-    let filteredEntries = schedule.filter(entry => {
-        // Show unassigned sessions OR those whose therapist is in the visible list
-        const matchesStaffFilter = entry.therapistId === null || visibleTherapistIds.has(entry.therapistId);
-
-        if (!matchesStaffFilter) {
-            return false;
-        }
-
-        if (selectedClientIds.length > 0) {
-            if (entry.clientId === null) return true;
-            return selectedClientIds.includes(entry.clientId);
-        }
-        return true; 
-    });
-
-    return filteredEntries;
-  }, [schedule, selectedClientIds, displayedTherapists]);
+    return schedule;
+  }, [schedule]);
 
 
   const handleBulkUpdateClients = async (file: File, action: 'ADD_UPDATE' | 'REMOVE'): Promise<BulkOperationSummary> => {
@@ -989,8 +964,8 @@ const App: React.FC = () => {
                 <h2 className="text-2xl sm:text-3xl font-serif text-slate-900 tracking-tight mb-6">Schedule {selectedDate && <span className="text-slate-500 font-sans text-lg block sm:inline sm:ml-2">for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>}</h2>
                 <FilterControls allTeams={availableTeams} allTherapists={therapists} allClients={clients} selectedTeamIds={selectedTeamIds} selectedTherapistIds={selectedTherapistIds} selectedClientIds={selectedClientIds} onTeamFilterChange={handleTeamFilterChange} onTherapistFilterChange={handleTherapistFilterChange} onClientFilterChange={handleClientFilterChange} onClearFilters={handleClearFilters} />
                 {loadingState.active && <div className="flex flex-col justify-center items-center py-20 bg-white rounded-3xl border border-slate-100 mb-8"><LoadingSpinner /><span className="mt-4 text-slate-500 font-medium">{loadingState.message}</span></div>}
-                {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} canEdit={canEdit} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} />}
-                {!loadingState.active && displayedSchedule && displayedSchedule.length === 0 && (!error || error.length === 0 || (error && !error.some(e => e.message.toLowerCase().includes("generated schedule is invalid")))) && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400">No schedule entries match current filters.</p></div>}
+                {!loadingState.active && displayedSchedule && displayedTherapists && <ScheduleView schedule={displayedSchedule} therapists={displayedTherapists} clients={clients} availableTeams={availableTeams} scheduledFullDate={selectedDate} canEdit={canEdit} onMoveScheduleEntry={handleMoveScheduleEntry} onOpenEditSessionModal={handleOpenEditSessionModal} onOpenAddSessionModal={handleOpenAddSessionModal} highlightedClientIds={selectedClientIds} highlightedTherapistIds={selectedTherapistIds} highlightedTeamIds={selectedTeamIds} />}
+                {!loadingState.active && displayedSchedule && displayedSchedule.length === 0 && (!error || error.length === 0 || (error && !error.some(e => e.message.toLowerCase().includes("generated schedule is invalid")))) && <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><p className="text-slate-400">No schedule entries for this date.</p></div>}
                 {!loadingState.active && !displayedSchedule && !error && (
                   <div className="text-center py-20 bg-white rounded-3xl border border-slate-100">
                     <p className="text-slate-400 font-medium">

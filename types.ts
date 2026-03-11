@@ -112,6 +112,9 @@ export interface ScheduleViewProps {
   onMoveScheduleEntry: (draggedEntryId: string, newTherapistId: string, newStartTime: string) => void;
   onOpenEditSessionModal: (entry: ScheduleEntry) => void;
   onOpenAddSessionModal: (therapistId: string, therapistName: string, startTime: string, day: DayOfWeek) => void;
+  highlightedClientIds?: string[];
+  highlightedTherapistIds?: string[];
+  highlightedTeamIds?: string[];
 }
 
 export interface ValidationError {
