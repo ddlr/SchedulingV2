@@ -375,7 +375,8 @@ export const validateFullSchedule = (
     const therapistSessions = scheduleToValidate.filter(s => s.therapistId === therapistId && s.day === currentDayOfWeekString);
     
     const billableSessions = therapistSessions.filter(s => s.sessionType === 'ABA' || s.sessionType === 'AlliedHealth_OT' || s.sessionType === 'AlliedHealth_SLP');
-    if (billableSessions.length > 4) {
+    const isSlpOrOt = therapist.role === 'SLP' || therapist.role === 'OT';
+    if (!isSlpOrOt && billableSessions.length > 4) {
       allErrors.push({
         ruleId: "MAX_NOTES_EXCEEDED",
         message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), which is high.`
