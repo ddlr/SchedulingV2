@@ -403,8 +403,8 @@ export class FastScheduler {
                             startLenSlots = lunch - s;
                         }
 
-                        // Allow lunch-adjacent short sessions >= 30 min (2 slots)
-                        const effectiveMinLen = (lunchCapped && startLenSlots < minLenSlots && startLenSlots >= 2)
+                        // Allow lunch-adjacent short sessions >= 60 min (4 slots)
+                        const effectiveMinLen = (lunchCapped && startLenSlots < minLenSlots && startLenSlots >= 4)
                             ? startLenSlots : minLenSlots;
 
                         for (let len = startLenSlots; len >= effectiveMinLen; len--) {
@@ -468,8 +468,8 @@ export class FastScheduler {
                                     }
                                 }
 
-                                // Lunch-adjacent pseudo-split: gap bounded by this therapist's lunch
-                                if (tracker.isCFree(target.ci, s, 1) && maxFreeLen >= 2) {
+                                // Lunch-adjacent pseudo-split: gap bounded by this therapist's lunch (>= 60 min)
+                                if (tracker.isCFree(target.ci, s, 1) && maxFreeLen >= 4) {
                                     const isBlockedByMyLunch = therapistLunchStart[q.ti] >= 0 && s + maxFreeLen === therapistLunchStart[q.ti];
                                     const isAfterMyLunch = therapistLunchEnd[q.ti] >= 0 && s === therapistLunchEnd[q.ti];
                                     if (isBlockedByMyLunch || isAfterMyLunch) {

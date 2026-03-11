@@ -95,8 +95,8 @@ const isLunchAdjacentSplit = (
   const entryEnd = timeToMinutes(entry.endTime);
   const duration = entryEnd - entryStart;
 
-  // Must be at least 30 minutes to qualify as a valid lunch-split fragment
-  if (duration < 30) return false;
+  // Must be at least 60 minutes to qualify as a valid lunch-split fragment
+  if (duration < 60) return false;
 
   // Find the same therapist's lunch (IndirectTime) on this day
   const therapistLunch = currentSchedule.find(s =>
