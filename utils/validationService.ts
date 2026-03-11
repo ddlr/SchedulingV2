@@ -108,7 +108,8 @@ export const validateSessionEntry = (
   }
 
   const therapistData = therapistId ? therapists.find(t => t.id === therapistId) : null;
-  if (!therapistId) {
+  const isAlliedHealth = sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP';
+  if (!therapistId && !isAlliedHealth) {
     errors.push({ ruleId: "UNASSIGNED_SESSION", message: `Session for ${clientName || 'N/A'} is not assigned to a staff member.` });
   } else if (!therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
