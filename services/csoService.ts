@@ -346,21 +346,12 @@ export class FastScheduler {
             }
         });
 
-        const therapistLunchEnd = therapistLunchStart.map(ls => ls >= 0 ? ls + 2 : -1);
-        // Track which client each therapist was serving right before their lunch
-        const preLunchAssignment: number[] = new Array(this.therapists.length).fill(-1);
-
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 0: Post-lunch resumption — therapist was serving this client before lunch
-                        const aResumes = (therapistLunchEnd[a.ti] === s && preLunchAssignment[a.ti] === target.ci) ? 0 : 1;
-                        const bResumes = (therapistLunchEnd[b.ti] === s && preLunchAssignment[b.ti] === target.ci) ? 0 : 1;
-                        if (aResumes !== bResumes) return aResumes - bResumes;
-
                         // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
@@ -398,16 +389,11 @@ export class FastScheduler {
 
                         // Lunch-aware: cap session length at therapist's lunch boundary
                         const lunch = therapistLunchStart[q.ti];
-                        const lunchCapped = lunch >= 0 && lunch > s && lunch < s + startLenSlots;
-                        if (lunchCapped) {
+                        if (lunch >= 0 && lunch > s && lunch < s + startLenSlots) {
                             startLenSlots = lunch - s;
                         }
 
-                        // Allow lunch-adjacent short sessions >= 30 min (2 slots)
-                        const effectiveMinLen = (lunchCapped && startLenSlots < minLenSlots && startLenSlots >= 2)
-                            ? startLenSlots : minLenSlots;
-
-                        for (let len = startLenSlots; len >= effectiveMinLen; len--) {
+                        for (let len = startLenSlots; len >= minLenSlots; len--) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                                 // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
                                 let gapAfter = 0;
@@ -418,8 +404,9 @@ export class FastScheduler {
                                 }
                                 // Don't reject gaps that are lunch blocks — another therapist can cover
                                 const gapStartSlot = s + len;
-                                const gapIsLunch = gapAfter > 0 && gapAfter <= 2 &&
-                                    therapistLunchStart[q.ti] >= 0 && therapistLunchStart[q.ti] === gapStartSlot;
+                                const gapIsLunch = gapAfter > 0 && gapAfter <= 2 && therapistLunchStart.some(
+                                    (ls, ti) => ls >= 0 && ls === gapStartSlot && qualMatrix[target.ci]?.has(ti)
+                                );
                                 if (gapAfter > 0 && gapAfter < minLenSlots && !gapIsLunch) continue;
 
                                 if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
@@ -431,14 +418,10 @@ export class FastScheduler {
                                 tracker.book(q.ti, target.ci, s, len);
                                 tSessionCount[q.ti]++;
                                 clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                                // Track pre-lunch assignment for post-lunch resumption
-                                if (therapistLunchStart[q.ti] >= 0 && s + len === therapistLunchStart[q.ti]) {
-                                    preLunchAssignment[q.ti] = target.ci;
-                                }
                                 break;
                             }
                         }
-                        // Pseudo-split: allow short ABA adjacent to AlliedHealth or lunch
+                        // Pseudo-split: allow short ABA adjacent to AlliedHealth at edge of day
                         if (tracker.isCFree(target.ci, s, 1)) {
                             let maxFreeLen = 0;
                             while (s + maxFreeLen < NUM_SLOTS && tracker.isCFree(target.ci, s + maxFreeLen, 1)) maxFreeLen++;
@@ -465,21 +448,6 @@ export class FastScheduler {
                                         tracker.book(q.ti, target.ci, s, maxFreeLen);
                                         tSessionCount[q.ti]++;
                                         clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (maxFreeLen * SLOT_SIZE));
-                                    }
-                                }
-
-                                // Lunch-adjacent pseudo-split: gap bounded by this therapist's lunch
-                                if (tracker.isCFree(target.ci, s, 1) && maxFreeLen >= 2) {
-                                    const isBlockedByMyLunch = therapistLunchStart[q.ti] >= 0 && s + maxFreeLen === therapistLunchStart[q.ti];
-                                    const isAfterMyLunch = therapistLunchEnd[q.ti] >= 0 && s === therapistLunchEnd[q.ti];
-                                    if (isBlockedByMyLunch || isAfterMyLunch) {
-                                        if (tracker.isTFree(q.ti, s, maxFreeLen) && !this.isBTB(schedule, target.c.id, q.t.id, s, maxFreeLen)) {
-                                            schedule.push(this.ent(target.ci, q.ti, s, maxFreeLen, 'ABA'));
-                                            tracker.book(q.ti, target.ci, s, maxFreeLen);
-                                            tSessionCount[q.ti]++;
-                                            clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (maxFreeLen * SLOT_SIZE));
-                                            if (isBlockedByMyLunch) preLunchAssignment[q.ti] = target.ci;
-                                        }
                                     }
                                 }
                             }
