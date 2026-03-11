@@ -200,24 +200,74 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Lunches
+        // Precompute qualification matrix: for each client, which ABA-eligible therapist indices are qualified
+        const qualMatrix: Set<number>[] = this.clients.map((c) => {
+            const qualified = new Set<number>();
+            this.therapists.forEach((t, ti) => {
+                if (t.role !== 'OT' && t.role !== 'SLP' && this.meetsInsurance(t, c)) {
+                    qualified.add(ti);
+                }
+            });
+            return qualified;
+        });
+
+        // Pass 1: Lunches (coverage-aware staggering)
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
+        const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
+
         shuffledT.forEach(q => {
             // Check if already has a lunch or indirect task in the lunch window from initialSchedule
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
-            const opts = [];
+            const opts: number[] = [];
             for (let s = ls; s <= le; s++) opts.push(s);
             opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
+
+            let bestFallback = -1;
+            let bestFallbackUncovered = Infinity;
+
             for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                if (!tracker.isTFree(q.ti, s, 2) || lunchCount[s] >= maxConcurrentLunches || lunchCount[s+1] >= maxConcurrentLunches) continue;
+
+                // Coverage check: ensure every client this therapist could serve
+                // has at least 1 other qualified therapist NOT on lunch at this slot
+                let uncovered = 0;
+                let allCovered = true;
+                for (let ci = 0; ci < this.clients.length; ci++) {
+                    if (!qualMatrix[ci].has(q.ti)) continue;
+                    let hasCoverage = false;
+                    for (const oti of qualMatrix[ci]) {
+                        if (oti === q.ti) continue;
+                        if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti)) {
+                            hasCoverage = true;
+                            break;
+                        }
+                    }
+                    if (!hasCoverage) { allCovered = false; uncovered++; }
+                }
+
+                if (allCovered) {
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
-                    break;
+                    lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
+                    return;
                 }
+                if (uncovered < bestFallbackUncovered) {
+                    bestFallbackUncovered = uncovered;
+                    bestFallback = s;
+                }
+            }
+
+            // Fallback: no perfect slot, use the one with fewest uncovered clients
+            if (bestFallback >= 0) {
+                const s = bestFallback;
+                schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                tracker.book(q.ti, -1, s, 2);
+                lunchCount[s]++; lunchCount[s+1]++;
+                lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
             }
         });
 
@@ -277,6 +327,17 @@ export class FastScheduler {
         });
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        // Build lunch slot lookup for gap heuristic exemption
+        const therapistLunchStart = new Array(this.therapists.length).fill(-1);
+        schedule.forEach(e => {
+            if (e.sessionType === 'IndirectTime') {
+                const ti = this.therapists.findIndex(t => t.id === e.therapistId);
+                if (ti >= 0) {
+                    therapistLunchStart[ti] = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+                }
+            }
+        });
+
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
@@ -327,7 +388,11 @@ export class FastScheduler {
                                     gapAfter++;
                                     tempS++;
                                 }
-                                if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                                // Exempt gaps that are this therapist's lunch — Pass 4 will fill coverage
+                                const gapStartSlot = s + len;
+                                const gapIsMyLunch = gapAfter > 0 && gapAfter <= 2 &&
+                                    therapistLunchStart[q.ti] >= 0 && therapistLunchStart[q.ti] === gapStartSlot;
+                                if (gapAfter > 0 && gapAfter < minLenSlots && !gapIsMyLunch) continue;
 
                                 if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
 
@@ -376,6 +441,60 @@ export class FastScheduler {
                     }
                 }
             });
+        }
+
+        // Pass 4: Fill lunch-time coverage gaps with handoff sessions
+        // For each client, find slots where they have no ABA coverage but a therapist is on lunch
+        for (let ci = 0; ci < this.clients.length; ci++) {
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                // Find uncovered client slots
+                if (!tracker.isCFree(ci, s, 1)) continue;
+
+                // Check if any therapist assigned to this client is on lunch at this slot
+                const clientTherapists = tracker.cT[ci];
+                let lunchingTi = -1;
+                for (const ti of clientTherapists) {
+                    if (therapistLunchStart[ti] >= 0 && s >= therapistLunchStart[ti] && s < therapistLunchStart[ti] + 2) {
+                        lunchingTi = ti;
+                        break;
+                    }
+                }
+                if (lunchingTi < 0) continue;
+
+                // Find consecutive uncovered slots (should be ~2 for a lunch)
+                let gapLen = 0;
+                while (s + gapLen < NUM_SLOTS && tracker.isCFree(ci, s + gapLen, 1)) gapLen++;
+                if (gapLen > 4) continue; // Only fill small lunch-sized gaps, not large ones
+
+                // Find a different therapist already assigned to this client who is free
+                let coverTi = -1;
+                for (const ti of clientTherapists) {
+                    if (ti === lunchingTi) continue;
+                    if (tracker.isTFree(ti, s, gapLen) && this.meetsInsurance(this.therapists[ti], this.clients[ci])
+                        && !this.isBTB(schedule, this.clients[ci].id, this.therapists[ti].id, s, gapLen)) {
+                        coverTi = ti;
+                        break;
+                    }
+                }
+
+                // If no existing provider, try any qualified free therapist (may add a provider)
+                if (coverTi < 0) {
+                    for (const x of abaEligibleTherapists) {
+                        if (x.ti === lunchingTi) continue;
+                        if (tracker.isTFree(x.ti, s, gapLen) && this.meetsInsurance(x.t, this.clients[ci])
+                            && !this.isBTB(schedule, this.clients[ci].id, x.t.id, s, gapLen)) {
+                            coverTi = x.ti;
+                            break;
+                        }
+                    }
+                }
+
+                if (coverTi >= 0) {
+                    schedule.push(this.ent(ci, coverTi, s, gapLen, 'ABA'));
+                    tracker.book(coverTi, ci, s, gapLen);
+                    clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (gapLen * SLOT_SIZE));
+                }
+            }
         }
 
         // Filter out lunches for people with no billable work

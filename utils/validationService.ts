@@ -84,6 +84,49 @@ const isPseudoSplitSession = (
   return isAtStart || isAtEnd;
 };
 
+const isLunchHandoffSession = (
+  entry: ScheduleEntry,
+  currentSchedule: GeneratedSchedule,
+  originalEntryForEditId?: string | null
+): boolean => {
+  if (entry.sessionType !== 'ABA' || !entry.clientId || !entry.therapistId) return false;
+
+  const entryStart = timeToMinutes(entry.startTime);
+  const entryEnd = timeToMinutes(entry.endTime);
+  const duration = entryEnd - entryStart;
+
+  // Handoff sessions cover lunch gaps — max 60 min (lunch + small buffer)
+  if (duration > 60) return false;
+
+  // Check if another therapist assigned to this client has a lunch overlapping this session
+  const otherTherapistLunch = currentSchedule.find(s =>
+    s.sessionType === 'IndirectTime' &&
+    s.therapistId !== entry.therapistId &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+  if (!otherTherapistLunch) return false;
+
+  const lunchStart = timeToMinutes(otherTherapistLunch.startTime);
+  const lunchEnd = timeToMinutes(otherTherapistLunch.endTime);
+
+  // The handoff session must overlap with the other therapist's lunch
+  if (entryStart >= lunchEnd || entryEnd <= lunchStart) return false;
+
+  // The other therapist must have an ABA session with this client on this day
+  const otherHasClient = currentSchedule.some(s =>
+    s.therapistId === otherTherapistLunch.therapistId &&
+    s.clientId === entry.clientId &&
+    s.sessionType === 'ABA' &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+
+  return otherHasClient;
+};
+
 export const validateSessionEntry = (
   entryToValidate: ScheduleEntry,
   currentSchedule: GeneratedSchedule,
@@ -216,7 +259,8 @@ export const validateSessionEntry = (
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
               if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes
-                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)
+                  && !isLunchHandoffSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
                 errors.push({
                     ruleId: "MIN_DURATION_VIOLATED",
                     message: `Session for ${clientName} is ${duration} mins, but ${reqId} requires at least ${qual.minSessionDurationMinutes} mins.`,
@@ -249,7 +293,7 @@ export const validateSessionEntry = (
 
   const duration = endTimeMinutes - startTimeMinutes;
   if (sessionType === 'ABA') {
-    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId) && !isLunchHandoffSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
       errors.push({ ruleId: "ABA_DURATION_TOO_SHORT", message: "ABA session must be at least 60 minutes." });
     }
 
