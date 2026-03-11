@@ -269,12 +269,9 @@ export class FastScheduler {
                         schedule.push(this.ent(target.ci, selectedTi, s, len, type));
                         tracker.book(selectedTi, target.ci, s, len);
                         tSessionCount[selectedTi]++;
-                    } else {
-                        // Fallback: keep unassigned if no eligible therapist is available
-                        schedule.push(this.entUnassigned(target.ci, s, len, type));
-                        tracker.book(-1, target.ci, s, len);
+                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                     }
-                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
+                    // Skip if no eligible therapist — don't create unassigned allied health sessions
                 }
             });
         });
