@@ -6,6 +6,8 @@ const SLOT_SIZE = 15;
 const OP_START = timeToMinutes(COMPANY_OPERATING_HOURS_START);
 const OP_END = timeToMinutes(COMPANY_OPERATING_HOURS_END);
 const NUM_SLOTS = (OP_END - OP_START) / SLOT_SIZE;
+const IDEAL_SESSION_MIN = 90;  // 1.5 hours
+const IDEAL_SESSION_MAX = 150; // 2.5 hours
 
 const generateId = () => `cso-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 const getDayOfWeekFromDate = (date: Date): DayOfWeek => {
@@ -371,15 +373,20 @@ export class FastScheduler {
                         const maxP = this.getMaxProviders(target.c);
                         if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
 
-                        // Try session lengths from max down to min required
+                        // Try session lengths: prefer ideal range (1.5-2.5h), then fallback to longer
                         const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
                         const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
                         const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
 
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+                        const capSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+                        const idealMaxSlots = Math.min(Math.floor(IDEAL_SESSION_MAX / SLOT_SIZE), capSlots);
+                        // Build ordered length list: ideal range (longest first), then longer fallback
+                        const lengthsToTry: number[] = [];
+                        for (let l = idealMaxSlots; l >= minLenSlots; l--) lengthsToTry.push(l);
+                        for (let l = capSlots; l > idealMaxSlots; l--) lengthsToTry.push(l);
 
-                        for (let len = startLenSlots; len >= minLenSlots; len--) {
+                        for (const len of lengthsToTry) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                                 // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
                                 let gapAfter = 0;
@@ -593,6 +600,20 @@ export class FastScheduler {
                 }
             }
         }
+
+        // Session duration preference: penalize ABA sessions outside ideal 1.5-2.5h range
+        s.forEach(e => {
+            if (e.sessionType === 'ABA') {
+                const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                if (dur > IDEAL_SESSION_MAX) {
+                    // Stronger penalty the further over 2.5h — discourage long sessions
+                    penalty += (dur - IDEAL_SESSION_MAX) * 10;
+                } else if (dur < IDEAL_SESSION_MIN) {
+                    // Mild penalty for short sessions (handoffs, edge cases are okay)
+                    penalty += (IDEAL_SESSION_MIN - dur) * 2;
+                }
+            }
+        });
 
         // Team consistency penalty: penalize cross-team assignments
         s.forEach(e => {
