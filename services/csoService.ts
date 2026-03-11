@@ -200,24 +200,82 @@ export class FastScheduler {
             return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
         });
 
-        // Pass 1: Lunches
+        // Precompute qualification matrix: for each client, which therapist indices are qualified
+        const qualMatrix: Set<number>[] = this.clients.map((c, _ci) => {
+            const qualified = new Set<number>();
+            this.therapists.forEach((t, ti) => {
+                if (t.role !== 'OT' && t.role !== 'SLP' && this.meetsInsurance(t, c)) {
+                    qualified.add(ti);
+                }
+            });
+            return qualified;
+        });
+
+        // Pass 1: Lunches (coverage-aware staggering)
         const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
+        // Track which therapist indices are on lunch at each slot
+        const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
+
         shuffledT.forEach(q => {
             // Check if already has a lunch or indirect task in the lunch window from initialSchedule
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
-            const opts = [];
+            const opts: number[] = [];
             for (let s = ls; s <= le; s++) opts.push(s);
             opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
+
+            let bestFallbackSlot = -1;
+            let bestFallbackUncovered = Infinity;
+
             for (const s of opts) {
-                if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
+                if (!tracker.isTFree(q.ti, s, 2) || lunchCount[s] >= maxConcurrentLunches || lunchCount[s+1] >= maxConcurrentLunches) continue;
+
+                // Coverage check: ensure every client has at least 1 other qualified therapist
+                // not on lunch during this slot and free
+                let uncoveredCount = 0;
+                let allCovered = true;
+                for (let ci = 0; ci < this.clients.length; ci++) {
+                    const qualSet = qualMatrix[ci];
+                    if (!qualSet.has(q.ti)) continue; // This therapist isn't relevant to this client
+                    let hasCoverage = false;
+                    for (const oti of qualSet) {
+                        if (oti === q.ti) continue;
+                        if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti) && tracker.isTFree(oti, s, 2)) {
+                            hasCoverage = true;
+                            break;
+                        }
+                    }
+                    if (!hasCoverage) {
+                        allCovered = false;
+                        uncoveredCount++;
+                    }
+                }
+
+                if (allCovered) {
+                    // Perfect slot — all clients remain covered
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
-                    break;
+                    lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
+                    return;
                 }
+
+                // Track best fallback (fewest uncovered clients)
+                if (uncoveredCount < bestFallbackUncovered) {
+                    bestFallbackUncovered = uncoveredCount;
+                    bestFallbackSlot = s;
+                }
+            }
+
+            // Fallback: no perfect slot, use the one with fewest uncovered clients
+            if (bestFallbackSlot >= 0) {
+                const s = bestFallbackSlot;
+                schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                tracker.book(q.ti, -1, s, 2);
+                lunchCount[s]++; lunchCount[s+1]++;
+                lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
             }
         });
 
@@ -277,6 +335,17 @@ export class FastScheduler {
         });
 
         // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
+        // Build lunch slot lookup: therapistLunchStart[ti] = start slot of lunch, or -1
+        const therapistLunchStart = new Array(this.therapists.length).fill(-1);
+        schedule.forEach(e => {
+            if (e.sessionType === 'IndirectTime') {
+                const ti = this.therapists.findIndex(t => t.id === e.therapistId);
+                if (ti >= 0) {
+                    therapistLunchStart[ti] = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+                }
+            }
+        });
+
         const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
         for (let s = 0; s < NUM_SLOTS; s++) {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
@@ -316,7 +385,13 @@ export class FastScheduler {
                         const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
 
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+                        let startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
+
+                        // Lunch-aware: cap session length at therapist's lunch boundary
+                        const lunch = therapistLunchStart[q.ti];
+                        if (lunch >= 0 && lunch > s && lunch < s + startLenSlots) {
+                            startLenSlots = lunch - s;
+                        }
 
                         for (let len = startLenSlots; len >= minLenSlots; len--) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
@@ -327,7 +402,12 @@ export class FastScheduler {
                                     gapAfter++;
                                     tempS++;
                                 }
-                                if (gapAfter > 0 && gapAfter < minLenSlots) continue;
+                                // Don't reject gaps that are lunch blocks — another therapist can cover
+                                const gapStartSlot = s + len;
+                                const gapIsLunch = gapAfter > 0 && gapAfter <= 2 && therapistLunchStart.some(
+                                    (ls, ti) => ls >= 0 && ls === gapStartSlot && qualMatrix[target.ci]?.has(ti)
+                                );
+                                if (gapAfter > 0 && gapAfter < minLenSlots && !gapIsLunch) continue;
 
                                 if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
 

@@ -84,6 +84,38 @@ const isPseudoSplitSession = (
   return isAtStart || isAtEnd;
 };
 
+const isLunchAdjacentSplit = (
+  entry: ScheduleEntry,
+  currentSchedule: GeneratedSchedule,
+  originalEntryForEditId?: string | null
+): boolean => {
+  if (entry.sessionType !== 'ABA' || !entry.clientId || !entry.therapistId) return false;
+
+  const entryStart = timeToMinutes(entry.startTime);
+  const entryEnd = timeToMinutes(entry.endTime);
+  const duration = entryEnd - entryStart;
+
+  // Must be at least 30 minutes to qualify as a valid lunch-split fragment
+  if (duration < 30) return false;
+
+  // Find the same therapist's lunch (IndirectTime) on this day
+  const therapistLunch = currentSchedule.find(s =>
+    s.therapistId === entry.therapistId &&
+    s.sessionType === 'IndirectTime' &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+
+  if (!therapistLunch) return false;
+
+  const lunchStart = timeToMinutes(therapistLunch.startTime);
+  const lunchEnd = timeToMinutes(therapistLunch.endTime);
+
+  // Session must be immediately before or after the therapist's lunch
+  return entryEnd === lunchStart || entryStart === lunchEnd;
+};
+
 export const validateSessionEntry = (
   entryToValidate: ScheduleEntry,
   currentSchedule: GeneratedSchedule,
@@ -216,7 +248,8 @@ export const validateSessionEntry = (
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
               if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes
-                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)
+                  && !isLunchAdjacentSplit(entryToValidate, currentSchedule, originalEntryForEditId)) {
                 errors.push({
                     ruleId: "MIN_DURATION_VIOLATED",
                     message: `Session for ${clientName} is ${duration} mins, but ${reqId} requires at least ${qual.minSessionDurationMinutes} mins.`,
@@ -249,7 +282,7 @@ export const validateSessionEntry = (
 
   const duration = endTimeMinutes - startTimeMinutes;
   if (sessionType === 'ABA') {
-    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId) && !isLunchAdjacentSplit(entryToValidate, currentSchedule, originalEntryForEditId)) {
       errors.push({ ruleId: "ABA_DURATION_TOO_SHORT", message: "ABA session must be at least 60 minutes." });
     }
 
