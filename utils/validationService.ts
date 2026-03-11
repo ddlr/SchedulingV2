@@ -43,6 +43,47 @@ const getRoleRank = (role: string, insuranceQualifications: InsuranceQualificati
   return DEFAULT_ROLE_RANK[role] ?? -1;
 };
 
+const isPseudoSplitSession = (
+  entry: ScheduleEntry,
+  currentSchedule: GeneratedSchedule,
+  originalEntryForEditId?: string | null
+): boolean => {
+  if (entry.sessionType !== 'ABA' || !entry.clientId) return false;
+
+  const entryStart = timeToMinutes(entry.startTime);
+  const entryEnd = timeToMinutes(entry.endTime);
+
+  // Get all sessions for this client on this day (excluding the entry being validated)
+  const clientSessionsToday = currentSchedule.filter(s =>
+    s.clientId === entry.clientId &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+
+  // Find adjacent AlliedHealth (SLP/OT) sessions
+  const adjacentAH = clientSessionsToday.filter(s => {
+    if (!s.sessionType.startsWith('AlliedHealth_')) return false;
+    const ahStart = timeToMinutes(s.startTime);
+    const ahEnd = timeToMinutes(s.endTime);
+    return entryEnd === ahStart || entryStart === ahEnd;
+  });
+
+  if (adjacentAH.length === 0) return false;
+
+  // Check if this ABA session is at the edge of the client's day
+  const allClientSessions = [entry, ...clientSessionsToday].filter(
+    s => s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_')
+  );
+  const earliestStart = Math.min(...allClientSessions.map(s => timeToMinutes(s.startTime)));
+  const latestEnd = Math.max(...allClientSessions.map(s => timeToMinutes(s.endTime)));
+
+  const isAtStart = entryStart === earliestStart;
+  const isAtEnd = entryEnd === latestEnd;
+
+  return isAtStart || isAtEnd;
+};
+
 export const validateSessionEntry = (
   entryToValidate: ScheduleEntry,
   currentSchedule: GeneratedSchedule,
@@ -140,7 +181,9 @@ export const validateSessionEntry = (
     if (!clientData) {
         errors.push({ ruleId: "CLIENT_NOT_FOUND", message: `Client "${clientName}" (ID: ${clientId}) not found.`});
     } else {
-        if (therapistData && clientData.insuranceRequirements.length > 0) {
+        // OT/SLP/CF therapists are exempt from client insurance requirement checks
+        const isExemptRole = therapistData && (therapistData.role === 'OT' || therapistData.role === 'SLP' || therapistData.role === 'CF');
+        if (therapistData && clientData.insuranceRequirements.length > 0 && !isExemptRole) {
             const unmetRequirements = clientData.insuranceRequirements.filter(reqId => {
               // 1. Direct match in qualifications
               if (therapistData.qualifications.includes(reqId)) return false;
@@ -166,12 +209,13 @@ export const validateSessionEntry = (
             }
         }
 
-        // Min/Max Session Duration Check
+        // Min/Max Session Duration Check — only for ABA sessions (Allied Health has its own time constraints)
         const duration = endTimeMinutes - startTimeMinutes;
-        clientData.insuranceRequirements.forEach(reqId => {
+        if (!isExemptRole) clientData.insuranceRequirements.forEach(reqId => {
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
-              if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes) {
+              if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes
+                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
                 errors.push({
                     ruleId: "MIN_DURATION_VIOLATED",
                     message: `Session for ${clientName} is ${duration} mins, but ${reqId} requires at least ${qual.minSessionDurationMinutes} mins.`,
@@ -204,7 +248,9 @@ export const validateSessionEntry = (
 
   const duration = endTimeMinutes - startTimeMinutes;
   if (sessionType === 'ABA') {
-    if (duration < 60) errors.push({ ruleId: "ABA_DURATION_TOO_SHORT", message: "ABA session must be at least 60 minutes." });
+    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+      errors.push({ ruleId: "ABA_DURATION_TOO_SHORT", message: "ABA session must be at least 60 minutes." });
+    }
 
     const clientData = clients.find(c => c.id === clientId);
     const hasCustomMax = clientData?.insuranceRequirements.some(reqId => {
@@ -416,7 +462,8 @@ export const validateFullSchedule = (
           });
 
           if (maxProvidersAllowed !== Infinity) {
-              const uniqueTherapists = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_')).map(s => s.therapistId));
+              // Only count ABA providers toward the limit — OT/SLP are separate and don't count
+              const uniqueTherapists = new Set(clientSessionsOnDay.filter(s => s.sessionType === 'ABA').map(s => s.therapistId));
               if (uniqueTherapists.size > maxProvidersAllowed) {
                   allErrors.push({
                       ruleId: "MAX_PROVIDERS_VIOLATED",
