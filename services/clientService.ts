@@ -1,5 +1,6 @@
 import { Client } from '../types';
 import { supabase } from '../lib/supabase';
+import { getNextAvailableColor } from '../utils/colorUtils';
 
 let _clients: Client[] = [];
 const listeners: Array<(clients: Client[]) => void> = [];
@@ -53,13 +54,15 @@ export const getClients = (): Client[] => {
 export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Client> => {
   try {
     const newId = crypto.randomUUID();
+    const usedColors = _clients.map(c => c.color).filter((c): c is string => !!c);
+    const assignedColor = newClientData.color || getNextAvailableColor(usedColors);
     const { data, error } = await supabase
       .from('clients')
       .insert({
         id: newId,
         name: newClientData.name,
         team_id: newClientData.teamId || null,
-        color: newClientData.color || null,
+        color: assignedColor,
         insurance_requirements: newClientData.insuranceRequirements || [],
         allied_health_needs: newClientData.alliedHealthNeeds || []
       })
@@ -130,6 +133,7 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
   let addedCount = 0;
   let updatedCount = 0;
   const errors: string[] = [];
+  const batchUsedColors: string[] = [];
 
   for (const clientData of clientsToProcess) {
     if (!clientData.name) continue;
@@ -158,18 +162,24 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
         if (updateError) throw updateError;
         updatedCount++;
       } else {
+        const usedColors = [
+          ..._clients.map(c => c.color).filter((c): c is string => !!c),
+          ...batchUsedColors,
+        ];
+        const assignedColor = clientData.color || getNextAvailableColor(usedColors);
         const { error: insertError } = await supabase
           .from('clients')
           .insert({
             id: crypto.randomUUID(),
             name: clientData.name,
             team_id: clientData.teamId || null,
-            color: clientData.color || null,
+            color: assignedColor,
             insurance_requirements: clientData.insuranceRequirements || [],
             allied_health_needs: clientData.alliedHealthNeeds || []
           });
 
         if (insertError) throw insertError;
+        batchUsedColors.push(assignedColor);
         addedCount++;
       }
     } catch (error: any) {
