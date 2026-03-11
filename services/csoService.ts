@@ -388,10 +388,17 @@ export class FastScheduler {
                                     gapAfter++;
                                     tempS++;
                                 }
-                                // Exempt gaps that are this therapist's lunch — Pass 4 will fill coverage
+                                // Exempt gaps that contain this therapist's lunch — Pass 4 will fill coverage
                                 const gapStartSlot = s + len;
-                                const gapIsMyLunch = gapAfter > 0 && gapAfter <= 2 &&
-                                    therapistLunchStart[q.ti] >= 0 && therapistLunchStart[q.ti] === gapStartSlot;
+                                const gapEndSlot = gapStartSlot + gapAfter;
+                                const myLunch = therapistLunchStart[q.ti];
+                                let gapIsMyLunch = false;
+                                if (myLunch >= 0 && myLunch >= gapStartSlot && myLunch + 2 <= gapEndSlot) {
+                                    const preLunchFree = myLunch - gapStartSlot;
+                                    const postLunchFree = gapEndSlot - (myLunch + 2);
+                                    gapIsMyLunch = (preLunchFree === 0 || preLunchFree >= minLenSlots)
+                                                && (postLunchFree === 0 || postLunchFree >= minLenSlots);
+                                }
                                 if (gapAfter > 0 && gapAfter < minLenSlots && !gapIsMyLunch) continue;
 
                                 if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
@@ -444,45 +451,35 @@ export class FastScheduler {
         }
 
         // Pass 4: Fill lunch-time coverage gaps with handoff sessions
-        // For each client, find slots where they have no ABA coverage but a therapist is on lunch
-        for (let ci = 0; ci < this.clients.length; ci++) {
-            for (let s = 0; s < NUM_SLOTS; s++) {
-                // Find uncovered client slots
-                if (!tracker.isCFree(ci, s, 1)) continue;
+        // Iterate each therapist's lunch and check if their assigned clients need coverage
+        const lunchLen = 2;
+        for (let ti = 0; ti < this.therapists.length; ti++) {
+            const lunchStart = therapistLunchStart[ti];
+            if (lunchStart < 0) continue;
 
-                // Check if any therapist assigned to this client is on lunch at this slot
-                const clientTherapists = tracker.cT[ci];
-                let lunchingTi = -1;
-                for (const ti of clientTherapists) {
-                    if (therapistLunchStart[ti] >= 0 && s >= therapistLunchStart[ti] && s < therapistLunchStart[ti] + 2) {
-                        lunchingTi = ti;
-                        break;
-                    }
-                }
-                if (lunchingTi < 0) continue;
+            for (let ci = 0; ci < this.clients.length; ci++) {
+                if (!tracker.cT[ci].has(ti)) continue; // only clients this therapist works with
+                if (!tracker.isCFree(ci, lunchStart, lunchLen)) continue; // client already covered
 
-                // Find consecutive uncovered slots (should be ~2 for a lunch)
-                let gapLen = 0;
-                while (s + gapLen < NUM_SLOTS && tracker.isCFree(ci, s + gapLen, 1)) gapLen++;
-                if (gapLen > 4) continue; // Only fill small lunch-sized gaps, not large ones
-
-                // Find a different therapist already assigned to this client who is free
+                // Find a cover therapist: prefer existing providers first
                 let coverTi = -1;
-                for (const ti of clientTherapists) {
-                    if (ti === lunchingTi) continue;
-                    if (tracker.isTFree(ti, s, gapLen) && this.meetsInsurance(this.therapists[ti], this.clients[ci])
-                        && !this.isBTB(schedule, this.clients[ci].id, this.therapists[ti].id, s, gapLen)) {
-                        coverTi = ti;
+                for (const existingTi of tracker.cT[ci]) {
+                    if (existingTi === ti) continue;
+                    if (tracker.isTFree(existingTi, lunchStart, lunchLen)
+                        && this.meetsInsurance(this.therapists[existingTi], this.clients[ci])
+                        && !this.isBTB(schedule, this.clients[ci].id, this.therapists[existingTi].id, lunchStart, lunchLen)) {
+                        coverTi = existingTi;
                         break;
                     }
                 }
 
-                // If no existing provider, try any qualified free therapist (may add a provider)
+                // If no existing provider, try any qualified free therapist
                 if (coverTi < 0) {
                     for (const x of abaEligibleTherapists) {
-                        if (x.ti === lunchingTi) continue;
-                        if (tracker.isTFree(x.ti, s, gapLen) && this.meetsInsurance(x.t, this.clients[ci])
-                            && !this.isBTB(schedule, this.clients[ci].id, x.t.id, s, gapLen)) {
+                        if (x.ti === ti) continue;
+                        if (tracker.isTFree(x.ti, lunchStart, lunchLen)
+                            && this.meetsInsurance(x.t, this.clients[ci])
+                            && !this.isBTB(schedule, this.clients[ci].id, x.t.id, lunchStart, lunchLen)) {
                             coverTi = x.ti;
                             break;
                         }
@@ -490,9 +487,9 @@ export class FastScheduler {
                 }
 
                 if (coverTi >= 0) {
-                    schedule.push(this.ent(ci, coverTi, s, gapLen, 'ABA'));
-                    tracker.book(coverTi, ci, s, gapLen);
-                    clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (gapLen * SLOT_SIZE));
+                    schedule.push(this.ent(ci, coverTi, lunchStart, lunchLen, 'ABA'));
+                    tracker.book(coverTi, ci, lunchStart, lunchLen);
+                    clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (lunchLen * SLOT_SIZE));
                 }
             }
         }
