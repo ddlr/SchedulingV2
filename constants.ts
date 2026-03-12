@@ -29,6 +29,7 @@ export const getDefaultRoleRank = () => _cachedConfig.defaultRoleRank;
 export const getAllAlliedHealthServices = () => _cachedConfig.allAlliedHealthServices;
 export const getAllSessionTypes = () => _cachedConfig.allSessionTypes;
 export const getClientColorPalette = () => _cachedConfig.clientColorPalette;
+export const getMaxSessionsPerTherapist = () => _cachedConfig.maxSessionsPerTherapist ?? 0;
 
 export const COMPANY_OPERATING_HOURS_START = getCompanyOperatingHoursStart();
 export const COMPANY_OPERATING_HOURS_END = getCompanyOperatingHoursEnd();

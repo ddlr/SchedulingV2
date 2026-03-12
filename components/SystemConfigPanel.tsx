@@ -45,6 +45,60 @@ const SystemConfigPanel: React.FC = () => {
     return hour >= 7 && hour <= 18;
   });
 
+  // --- Role management helpers ---
+  const handleRoleRename = (index: number, newName: string) => {
+    const oldName = config.allTherapistRoles[index];
+    const updatedRoles = [...config.allTherapistRoles];
+    updatedRoles[index] = newName;
+
+    // Update defaultRoleRank keys to match
+    const updatedRank = { ...config.defaultRoleRank };
+    if (oldName !== newName && oldName in updatedRank) {
+      updatedRank[newName] = updatedRank[oldName];
+      delete updatedRank[oldName];
+    }
+
+    setConfig({ ...config, allTherapistRoles: updatedRoles, defaultRoleRank: updatedRank });
+  };
+
+  const handleAddRole = () => {
+    const newRole = `Role ${config.allTherapistRoles.length + 1}`;
+    setConfig({
+      ...config,
+      allTherapistRoles: [...config.allTherapistRoles, newRole],
+      defaultRoleRank: { ...config.defaultRoleRank, [newRole]: 0 },
+    });
+  };
+
+  const handleRemoveRole = (index: number) => {
+    const roleName = config.allTherapistRoles[index];
+    const updatedRoles = config.allTherapistRoles.filter((_, i) => i !== index);
+    const updatedRank = { ...config.defaultRoleRank };
+    delete updatedRank[roleName];
+
+    setConfig({ ...config, allTherapistRoles: updatedRoles, defaultRoleRank: updatedRank });
+  };
+
+  const handleRankChange = (roleName: string, newRank: number) => {
+    setConfig({
+      ...config,
+      defaultRoleRank: { ...config.defaultRoleRank, [roleName]: newRank },
+    });
+  };
+
+  const handleMoveRole = (index: number, direction: 'up' | 'down') => {
+    const roles = [...config.allTherapistRoles];
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= roles.length) return;
+    [roles[index], roles[swapIndex]] = [roles[swapIndex], roles[index]];
+    setConfig({ ...config, allTherapistRoles: roles });
+  };
+
+  // Sort roles by rank for the hierarchy display (highest rank first)
+  const rolesByRank = [...config.allTherapistRoles].sort((a, b) => {
+    return (config.defaultRoleRank[b] ?? 0) - (config.defaultRoleRank[a] ?? 0);
+  });
+
   return (
     <div className="space-y-12 p-8 bg-white rounded-3xl border border-slate-100 shadow-sm">
       <div>
@@ -151,6 +205,98 @@ const SystemConfigPanel: React.FC = () => {
                 {timeSlots.map(time => <option key={time} value={time}>{time}</option>)}
               </select>
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-6 lg:col-span-2">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Scheduling Constraints</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Max Sessions Per Therapist</label>
+              <input
+                type="number"
+                min={0}
+                value={config.maxSessionsPerTherapist ?? 0}
+                onChange={(e) => setConfig({ ...config, maxSessionsPerTherapist: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              />
+              <p className="text-[10px] text-slate-400 mt-1 ml-1">0 = unlimited</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Therapist Roles</h3>
+            <button
+              onClick={handleAddRole}
+              className="text-xs font-bold text-brand-blue hover:text-blue-700 transition-colors px-3 py-1 rounded-lg hover:bg-blue-50"
+            >
+              + Add Role
+            </button>
+          </div>
+          <div className="space-y-2">
+            {config.allTherapistRoles.map((role, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <button
+                    onClick={() => handleMoveRole(index, 'up')}
+                    disabled={index === 0}
+                    className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 leading-none"
+                  >
+                    &#9650;
+                  </button>
+                  <button
+                    onClick={() => handleMoveRole(index, 'down')}
+                    disabled={index === config.allTherapistRoles.length - 1}
+                    className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 leading-none"
+                  >
+                    &#9660;
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => handleRoleRename(index, e.target.value)}
+                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+                />
+                <button
+                  onClick={() => handleRemoveRole(index)}
+                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Remove role"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Role Hierarchy</h3>
+          <p className="text-[10px] text-slate-400 ml-1">Higher rank = more senior. Used for scheduling priority and staff sorting.</p>
+          <div className="space-y-2">
+            {rolesByRank.map((role) => (
+              <div key={role} className="flex items-center gap-3">
+                <span className="text-sm text-slate-700 font-medium w-24 truncate">{role}</span>
+                <input
+                  type="number"
+                  value={config.defaultRoleRank[role] ?? 0}
+                  onChange={(e) => handleRankChange(role, parseInt(e.target.value) || 0)}
+                  className="w-20 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm text-slate-700 font-medium text-center focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+                />
+                <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-brand-blue h-full rounded-full transition-all"
+                    style={{ width: `${Math.max(0, Math.min(100, ((config.defaultRoleRank[role] ?? 0) + 2) * 12))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       </div>

@@ -1,5 +1,5 @@
 import { Client, Therapist, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, TherapistRole } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants';
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist } from '../constants';
 import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from '../utils/validationService';
 
 const SLOT_SIZE = 15;
@@ -144,6 +144,7 @@ export class FastScheduler {
         // Allow enough concurrent lunches to ensure remaining staff can cover all clients
         const maxConcurrentLunches = Math.max(1, this.therapists.length - this.clients.length);
         const tSessionCount = new Array(this.therapists.length).fill(0);
+        const maxSessions = getMaxSessionsPerTherapist();
         const clientMinutes = new Map<number, number>();
         this.clients.forEach((c, ci) => {
             const otherDayMins = this.otherDayEntries
@@ -302,7 +303,8 @@ export class FastScheduler {
                     // 1. Try preferred provider if they match the role and are free
                     if (need.preferredProviderId) {
                         const ti = this.therapists.findIndex(t => t.id === need.preferredProviderId);
-                        if (ti >= 0 && this.therapists[ti].role === serviceRole && tracker.isTFree(ti, s, len)) {
+                        if (ti >= 0 && this.therapists[ti].role === serviceRole && tracker.isTFree(ti, s, len)
+                            && !(maxSessions > 0 && tSessionCount[ti] >= maxSessions)) {
                             selectedTi = ti;
                         }
                     }
@@ -310,7 +312,8 @@ export class FastScheduler {
                     // 2. Try any other free therapist with the matching role
                     if (selectedTi === -1) {
                         const eligible = this.therapists.map((t, ti) => ({t, ti}))
-                            .filter(x => x.t.role === serviceRole && tracker.isTFree(x.ti, s, len))
+                            .filter(x => x.t.role === serviceRole && tracker.isTFree(x.ti, s, len)
+                                && !(maxSessions > 0 && tSessionCount[x.ti] >= maxSessions))
                             .sort(() => Math.random() - 0.5);
                         if (eligible.length > 0) {
                             selectedTi = eligible[0].ti;
@@ -369,6 +372,9 @@ export class FastScheduler {
                     });
 
                     for (const q of quals) {
+                        // Check max sessions per therapist cap
+                        if (maxSessions > 0 && tSessionCount[q.ti] >= maxSessions) continue;
+
                         // Check provider limit
                         const maxP = this.getMaxProviders(target.c);
                         if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
@@ -472,6 +478,7 @@ export class FastScheduler {
                 let coverTi = -1;
                 for (const existingTi of tracker.cT[ci]) {
                     if (existingTi === ti) continue;
+                    if (maxSessions > 0 && tSessionCount[existingTi] >= maxSessions) continue;
                     if (tracker.isTFree(existingTi, lunchStart, lunchLen)
                         && this.meetsInsurance(this.therapists[existingTi], this.clients[ci])
                         && !this.isBTB(schedule, this.clients[ci].id, this.therapists[existingTi].id, lunchStart, lunchLen)) {
@@ -484,6 +491,7 @@ export class FastScheduler {
                 if (coverTi < 0) {
                     for (const x of abaEligibleTherapists) {
                         if (x.ti === ti) continue;
+                        if (maxSessions > 0 && tSessionCount[x.ti] >= maxSessions) continue;
                         if (tracker.isTFree(x.ti, lunchStart, lunchLen)
                             && this.meetsInsurance(x.t, this.clients[ci])
                             && !this.isBTB(schedule, this.clients[ci].id, x.t.id, lunchStart, lunchLen)) {
