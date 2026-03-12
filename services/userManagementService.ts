@@ -21,6 +21,7 @@ export const userManagementService = {
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (error) {

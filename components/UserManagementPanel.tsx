@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { userManagementService } from '../services/userManagementService';
 import { demoRequestService, DemoRequest } from '../services/demoRequestService';
 import { User } from '../services/authService';
+import { supabase } from '../lib/supabase';
 import { PlusIcon } from './icons/PlusIcon';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
@@ -23,11 +24,7 @@ const UserManagementPanel: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [usersData, requestsData] = await Promise.all([
       userManagementService.getAllUsers(),
@@ -36,7 +33,23 @@ const UserManagementPanel: React.FC = () => {
     setUsers(usersData);
     setDemoRequests(requestsData);
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+
+    // Subscribe to realtime changes on users table so the list stays in sync
+    const channel = supabase
+      .channel('admin_users_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadData]);
 
   const handleOpenCreateModal = () => {
     setEditingUser(null);
