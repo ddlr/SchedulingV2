@@ -70,10 +70,11 @@ export class FastScheduler {
     }
 
     // Scheduling priority rank: determines assignment order and billable time penalties.
-    // CFs are direct-care providers and should be scheduled like STAR 3 staff,
-    // not preserved like BCBAs.
+    // CFs are direct-care providers that should be heavily utilized.
+    // Rank them between STAR 1 and STAR 2 so they get assigned early
+    // and the billable time penalty doesn't discourage filling their schedule.
     private getSchedulingRank(role: string): number {
-        if (role === 'CF') return this.getRoleRank('STAR 3') ?? 4;
+        if (role === 'CF') return this.getRoleRank('STAR 1') ?? 2;
         return this.getRoleRank(role);
     }
 
@@ -377,7 +378,7 @@ export class FastScheduler {
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                         if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 3: Role rank (BT/RBT first for billable work, CF treated as direct-care)
+                        // Priority 3: Role rank (BT/RBT/CF first for billable work)
                         const aRank = this.getSchedulingRank(a.t.role);
                         const bRank = this.getSchedulingRank(b.t.role);
                         if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
