@@ -69,6 +69,14 @@ export class FastScheduler {
         return DEFAULT_ROLE_RANK[role] ?? -1;
     }
 
+    // Scheduling priority rank: determines assignment order and billable time penalties.
+    // CFs are direct-care providers and should be scheduled like STAR 3 staff,
+    // not preserved like BCBAs.
+    private getSchedulingRank(role: string): number {
+        if (role === 'CF') return this.getRoleRank('STAR 3') ?? 4;
+        return this.getRoleRank(role);
+    }
+
     private meetsInsurance(t: Therapist, c: Client): boolean {
         if (c.insuranceRequirements.length === 0) return true;
         return c.insuranceRequirements.every(reqId => {
@@ -198,9 +206,9 @@ export class FastScheduler {
             });
         }
 
-        // Optimization: Pre-sort therapists by role once
+        // Optimization: Pre-sort therapists by scheduling priority once
         const sortedTherapists = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) => {
-            return this.getRoleRank(a.t.role) - this.getRoleRank(b.t.role);
+            return this.getSchedulingRank(a.t.role) - this.getSchedulingRank(b.t.role);
         });
 
         // Precompute qualification matrix: for each client, which ABA-eligible therapist indices are qualified
@@ -362,9 +370,9 @@ export class FastScheduler {
                             if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                         }
 
-                        // Priority 3: Role rank (BT/RBT first for billable work)
-                        const aRank = this.getRoleRank(a.t.role);
-                        const bRank = this.getRoleRank(b.t.role);
+                        // Priority 3: Role rank (BT/RBT first for billable work, CF treated as direct-care)
+                        const aRank = this.getSchedulingRank(a.t.role);
+                        const bRank = this.getSchedulingRank(b.t.role);
                         if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
 
                         // Priority 4: Current session count (even distribution among same-tier roles)
@@ -597,7 +605,7 @@ export class FastScheduler {
             }
         });
 
-        const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
+        const data = this.therapists.map(t => ({ p: this.getSchedulingRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
                 // If therapist i is higher rank (BCBA) than therapist j (BT)
