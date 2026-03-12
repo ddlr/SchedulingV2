@@ -539,12 +539,13 @@ export class FastScheduler {
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
         let minScore = Infinity;
-        // Scale iterations based on problem size - avoid excessive computation
+        // Scale iterations based on problem size
         const problemSize = this.clients.length * this.therapists.length;
-        const iterations = problemSize > 500 ? 1000 : problemSize > 200 ? 2500 : problemSize > 50 ? 5000 : 10000;
-        const maxTimeMs = 90000; // Hard time limit of 90 seconds
+        const iterations = problemSize > 500 ? 5000 : problemSize > 200 ? 10000 : problemSize > 50 ? 20000 : 50000;
+        const maxTimeMs = 90000; // Hard time limit of 90 seconds per run
         const startTime = Date.now();
         let noImprovementCount = 0;
+        const noImprovementLimit = problemSize > 200 ? 2000 : 3000;
         for (let i = 0; i < iterations; i++) {
             // Yield to the UI thread every 50 iterations to prevent freezing
             if (i > 0 && i % 50 === 0) {
@@ -562,8 +563,8 @@ export class FastScheduler {
             } else {
                 noImprovementCount++;
             }
-            // Early exit if no improvement for a while (converged)
-            if (noImprovementCount > 500) break;
+            // Early exit if converged
+            if (noImprovementCount > noImprovementLimit) break;
         }
         return best;
     }
@@ -649,21 +650,31 @@ export async function runCsoAlgorithm(
     initialScheduleForOptimization?: GeneratedSchedule
 ): Promise<GAGenerationResult> {
     const day = getDayOfWeekFromDate(selectedDate);
-    const CONCURRENT_RUNS = 3;
-    const runners = Array.from({ length: CONCURRENT_RUNS }, () => {
-        const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
-        return algo.run(initialScheduleForOptimization);
-    });
-    const results = await Promise.all(runners);
-    let bestSchedule = results[0];
-    let bestErrorCount = Infinity;
-    for (const schedule of results) {
-        const errs = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
-        if (errs.length < bestErrorCount) {
-            bestErrorCount = errs.length;
-            bestSchedule = schedule;
+    const CONCURRENT_RUNS = 4;
+    const MAX_ROUNDS = 10; // Up to 10 rounds of concurrent runs (~15 min max)
+    let globalBestSchedule: GeneratedSchedule = [];
+    let globalBestScore = Infinity;
+    let globalBestErrors: any[] = [];
+
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+        const runners = Array.from({ length: CONCURRENT_RUNS }, () => {
+            const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
+            return algo.run(initialScheduleForOptimization);
+        });
+        const results = await Promise.all(runners);
+
+        for (const schedule of results) {
+            const errs = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
+            if (errs.length < globalBestScore) {
+                globalBestScore = errs.length;
+                globalBestSchedule = schedule;
+                globalBestErrors = errs;
+            }
         }
+
+        // Stop early if we found a valid schedule
+        if (globalBestScore === 0) break;
     }
-    const errors = validateFullSchedule(bestSchedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
-    return { schedule: bestSchedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
+
+    return { schedule: globalBestSchedule, finalValidationErrors: globalBestErrors, generations: 0, bestFitness: globalBestErrors.length, success: globalBestErrors.length === 0, statusMessage: globalBestErrors.length === 0 ? "Perfect!" : "Nearly Perfect." };
 }
