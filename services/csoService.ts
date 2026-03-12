@@ -140,7 +140,7 @@ export class FastScheduler {
         const tracker = new BitTracker(this.therapists.length, this.clients.length);
         const lunchCount = new Array(NUM_SLOTS).fill(0);
         // Allow enough concurrent lunches to ensure remaining staff can cover all clients
-        const maxConcurrentLunches = Math.max(2, Math.ceil(this.therapists.length / 4));
+        const maxConcurrentLunches = Math.max(1, this.therapists.length - this.clients.length);
         const tSessionCount = new Array(this.therapists.length).fill(0);
         const clientMinutes = new Map<number, number>();
         this.clients.forEach((c, ci) => {
@@ -329,10 +329,14 @@ export class FastScheduler {
                         const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
                         const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+                        const idealMax = 10; // 2.5 hours
+                        const idealMin = 6;  // 1.5 hours
+                        const possibleLens = [];
+                        for (let l = Math.min(startLenSlots, idealMax); l >= Math.max(minLenSlots, idealMin); l--) possibleLens.push(l);
+                        for (let l = startLenSlots; l > idealMax; l--) if (l >= minLenSlots) possibleLens.push(l);
+                        for (let l = Math.min(startLenSlots, idealMin - 1); l >= minLenSlots; l--) possibleLens.push(l);
 
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-
-                        for (let len = startLenSlots; len >= minLenSlots; len--) {
+                        for (let len of possibleLens) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
                                 // Relax gap heuristic during lunch window to facilitate handoffs
                                 if (s < lsPrio || s >= lePrio) {
@@ -438,18 +442,20 @@ export class FastScheduler {
         let penalty = 0;
         const billableTimes = new Map<string, number>();
         s.forEach(e => {
-            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+            if (e.sessionType === "ABA" || e.sessionType.startsWith("AlliedHealth_")) {
                 const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
                 billableTimes.set(e.therapistId, (billableTimes.get(e.therapistId) || 0) + dur);
+
+                // Ideal session length penalty (1.5h to 2.5h)
+                if (e.sessionType === "ABA") {
+                    if (dur < 90 || dur > 150) penalty += 5000;
+                }
             }
         });
 
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
-                // If therapist i is higher rank (BCBA) than therapist j (BT)
-                // but therapist i has MORE billable time than j, penalize.
-                // We want to preserve 'blank' time for senior staff.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
                     penalty += (data[i].billable - data[j].billable) * 100;
                 }
@@ -458,7 +464,7 @@ export class FastScheduler {
 
         // Team consistency penalty: penalize cross-team assignments
         s.forEach(e => {
-            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+            if (e.sessionType === "ABA" || e.sessionType.startsWith("AlliedHealth_")) {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
@@ -470,7 +476,6 @@ export class FastScheduler {
         });
 
         return penalty;
-    }
 }
 
 export async function runCsoAlgorithm(
