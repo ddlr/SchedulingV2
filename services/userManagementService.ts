@@ -55,15 +55,23 @@ export const userManagementService = {
         }),
       });
 
-      const result = await response.json();
+      let result: any;
+      try {
+        result = await response.json();
+      } catch {
+        console.error('create-user: non-JSON response', response.status, response.statusText);
+        return { success: false, error: `Server error (${response.status}): Edge function may not be deployed` };
+      }
 
       if (!response.ok) {
-        return { success: false, error: result.error || 'Failed to create user' };
+        console.error('create-user: error response', response.status, result);
+        return { success: false, error: result.error || `Failed to create user (${response.status})` };
       }
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'Failed to create user' };
+      console.error('create-user: request failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Network error — could not reach server' };
     }
   },
 
