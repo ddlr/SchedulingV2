@@ -542,7 +542,7 @@ export class FastScheduler {
         // Scale iterations based on problem size - avoid excessive computation
         const problemSize = this.clients.length * this.therapists.length;
         const iterations = problemSize > 500 ? 1000 : problemSize > 200 ? 2500 : problemSize > 50 ? 5000 : 10000;
-        const maxTimeMs = 90000; // Hard time limit of 90 seconds
+        const maxTimeMs = 60000; // Hard time limit of 60 seconds
         const startTime = Date.now();
         let noImprovementCount = 0;
         for (let i = 0; i < iterations; i++) {
