@@ -357,12 +357,19 @@ export class FastScheduler {
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Same team as client (strongest preference)
                         const clientTeam = target.c.teamId;
-                        if (clientTeam) {
-                            const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
-                            const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
-                            if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
+                        const aSameTeam = clientTeam ? (a.t.teamId === clientTeam ? true : false) : true;
+                        const bSameTeam = clientTeam ? (b.t.teamId === clientTeam ? true : false) : true;
+
+                        // Priority 1: Same team as client (strongest preference)
+                        if (aSameTeam !== bSameTeam) return aSameTeam ? -1 : 1;
+
+                        // If both are cross-team, prefer higher-ranked staff (STAR 3 first)
+                        // Lower-ranked staff (STAR 1, BT, RBT) should rarely take cross-team clients
+                        if (!aSameTeam && !bSameTeam) {
+                            const aRank = this.getSchedulingRank(a.t.role);
+                            const bRank = this.getSchedulingRank(b.t.role);
+                            if (aRank !== bRank) return bRank - aRank; // Higher rank first for cross-team
                         }
 
                         // Priority 2: Already working with this client (Medicaid limit safety)
@@ -631,14 +638,23 @@ export class FastScheduler {
             }
         });
 
-        // Team consistency penalty: strongly penalize cross-team assignments
+        // Team consistency penalty: penalize cross-team assignments based on therapist role.
+        // STAR 3 staff are expected to handle cross-team clients; lower roles should rarely do so.
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
                     if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
-                        penalty += 5000;
+                        const rank = this.getSchedulingRank(therapist.role);
+                        const star3Rank = this.getRoleRank('STAR 3') ?? 4;
+                        if (rank >= star3Rank) {
+                            // STAR 3 or above: mild penalty (cross-team is acceptable)
+                            penalty += 1000;
+                        } else {
+                            // Below STAR 3: heavy penalty (cross-team should be rare)
+                            penalty += 8000;
+                        }
                     }
                 }
             }
