@@ -1,6 +1,6 @@
 
 import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, ValidationError, Callout, InsuranceQualification } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist } from '../constants'; // Use constants
 
 export const timeToMinutes = (time: string): number => {
   if (!time) return 0;
@@ -421,10 +421,12 @@ export const validateFullSchedule = (
     
     const billableSessions = therapistSessions.filter(s => s.sessionType === 'ABA' || s.sessionType === 'AlliedHealth_OT' || s.sessionType === 'AlliedHealth_SLP');
     const isSlpOrOt = therapist.role === 'SLP' || therapist.role === 'OT';
-    if (!isSlpOrOt && billableSessions.length > 4) {
+    const maxNotes = getMaxSessionsPerTherapist();
+    const noteThreshold = maxNotes > 0 ? maxNotes : 4;
+    if (!isSlpOrOt && billableSessions.length > noteThreshold) {
       allErrors.push({
         ruleId: "MAX_NOTES_EXCEEDED",
-        message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), which is high.`
+        message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), exceeding the limit of ${noteThreshold}.`
       });
     }
 
