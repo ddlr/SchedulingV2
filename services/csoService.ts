@@ -357,18 +357,18 @@ export class FastScheduler {
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Already working with this client (Medicaid limit safety)
-                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
-                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
-                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
-
-                        // Priority 2: Same team as client (strict team-first)
+                        // Priority 1: Same team as client (strongest preference)
                         const clientTeam = target.c.teamId;
                         if (clientTeam) {
                             const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
                             const bSameTeam = b.t.teamId === clientTeam ? 0 : 1;
                             if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                         }
+
+                        // Priority 2: Already working with this client (Medicaid limit safety)
+                        const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
+                        const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
+                        if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
                         // Priority 3: Role rank (BT/RBT first for billable work, CF treated as direct-care)
                         const aRank = this.getSchedulingRank(a.t.role);
@@ -631,14 +631,14 @@ export class FastScheduler {
             }
         });
 
-        // Team consistency penalty: penalize cross-team assignments
+        // Team consistency penalty: strongly penalize cross-team assignments
         s.forEach(e => {
             if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
                     if (client?.teamId && therapist?.teamId && client.teamId !== therapist.teamId) {
-                        penalty += 500;
+                        penalty += 5000;
                     }
                 }
             }
