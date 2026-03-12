@@ -649,21 +649,8 @@ export async function runCsoAlgorithm(
     initialScheduleForOptimization?: GeneratedSchedule
 ): Promise<GAGenerationResult> {
     const day = getDayOfWeekFromDate(selectedDate);
-    const CONCURRENT_RUNS = 3;
-    const runners = Array.from({ length: CONCURRENT_RUNS }, () => {
-        const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
-        return algo.run(initialScheduleForOptimization);
-    });
-    const results = await Promise.all(runners);
-    let bestSchedule = results[0];
-    let bestErrorCount = Infinity;
-    for (const schedule of results) {
-        const errs = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
-        if (errs.length < bestErrorCount) {
-            bestErrorCount = errs.length;
-            bestSchedule = schedule;
-        }
-    }
-    const errors = validateFullSchedule(bestSchedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
-    return { schedule: bestSchedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
+    const algo = new FastScheduler(clients, therapists, insuranceQualifications, day, selectedDate, callouts, initialScheduleForOptimization);
+    const schedule = await algo.run(initialScheduleForOptimization);
+    const errors = validateFullSchedule(schedule, clients, therapists, insuranceQualifications, selectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
+    return { schedule, finalValidationErrors: errors, generations: 0, bestFitness: errors.length, success: errors.length === 0, statusMessage: errors.length === 0 ? "Perfect!" : "Nearly Perfect." };
 }
