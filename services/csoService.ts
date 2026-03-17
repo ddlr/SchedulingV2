@@ -180,6 +180,9 @@ export class FastScheduler {
         if (initialSchedule) {
             initialSchedule.forEach(entry => {
                 if (entry.day !== this.day) return;
+                // Skip IndirectTime from initial schedule — Pass 1 will re-place lunches
+                // fresh so the optimizer can shift them to better positions
+                if (entry.sessionType === 'IndirectTime') return;
                 const ti = this.therapists.findIndex(t => t.id === entry.therapistId);
                 const ci = this.clients.findIndex(c => c.id === entry.clientId);
                 const s = Math.max(0, Math.floor((timeToMinutes(entry.startTime) - OP_START) / SLOT_SIZE));
@@ -224,8 +227,11 @@ export class FastScheduler {
         });
 
         // Pass 1: Lunches (coverage-aware staggering)
-        // Sort therapists for lunch placement: those who are the sole/rare qualified
-        // provider for clients go first (tightest constraints), with random tiebreaker
+        // Sort therapists for lunch placement by:
+        // 1. Role hierarchy (higher-ranked staff first — BCBAs/STAR 3 get best lunch slots
+        //    to maximize their indirect time)
+        // 2. Coverage criticality (sole/rare providers next — tightest constraints)
+        // 3. Random tiebreaker
         const therapistCriticality = this.therapists.map((t, ti) => {
             let sole = 0;
             for (let ci = 0; ci < this.clients.length; ci++) {
@@ -234,14 +240,18 @@ export class FastScheduler {
             }
             return sole;
         });
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) =>
-            therapistCriticality[b.ti] - therapistCriticality[a.ti] || (Math.random() - 0.5)
-        );
+        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) => {
+            // Higher rank first (BCBA=5, STAR 3=4, etc.)
+            const rankDiff = this.getSchedulingRank(b.t.role) - this.getSchedulingRank(a.t.role);
+            if (rankDiff !== 0) return rankDiff;
+            // Then by coverage criticality
+            const critDiff = therapistCriticality[b.ti] - therapistCriticality[a.ti];
+            if (critDiff !== 0) return critDiff;
+            return Math.random() - 0.5;
+        });
         const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
 
         shuffledT.forEach(q => {
-            // Check if already has a lunch or indirect task in the lunch window from initialSchedule
-            if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
 
             const ls = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
@@ -540,6 +550,71 @@ export class FastScheduler {
             }
         }
 
+        // Pass 5: Extend short ABA sessions that would flag MIN_DURATION violations
+        // Scan for sessions below the client's minimum duration and extend them
+        for (let i = 0; i < schedule.length; i++) {
+            const e = schedule[i];
+            if (e.sessionType !== 'ABA') continue;
+            const ci = this.clients.findIndex(c => c.id === e.clientId);
+            const ti = this.therapists.findIndex(t => t.id === e.therapistId);
+            if (ci < 0 || ti < 0) continue;
+
+            const startSlot = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+            const endSlot = Math.floor((timeToMinutes(e.endTime) - OP_START) / SLOT_SIZE);
+            const currentLen = endSlot - startSlot;
+            const minLenSlots = Math.ceil(this.getMinDuration(this.clients[ci]) / SLOT_SIZE);
+            const maxLenSlots = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
+
+            if (currentLen >= minLenSlots) continue; // Already meets minimum
+
+            const remainingMins = this.getMaxWeeklyMinutes(this.clients[ci]) - (clientMinutes.get(ci) || 0);
+            const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+            const targetLen = Math.min(minLenSlots, maxLenSlots, currentLen + remainingSlots);
+            if (targetLen <= currentLen) continue; // Can't extend without exceeding weekly max
+
+            let needed = targetLen - currentLen;
+
+            // Try extending forward first
+            let extendAfter = 0;
+            while (extendAfter < needed
+                && endSlot + extendAfter < NUM_SLOTS
+                && tracker.isTFree(ti, endSlot + extendAfter, 1)
+                && tracker.isCFree(ci, endSlot + extendAfter, 1)) {
+                extendAfter++;
+            }
+
+            // Then try extending backward for remaining deficit
+            let extendBefore = 0;
+            const stillNeeded = needed - extendAfter;
+            while (extendBefore < stillNeeded
+                && startSlot - extendBefore - 1 >= 0
+                && tracker.isTFree(ti, startSlot - extendBefore - 1, 1)
+                && tracker.isCFree(ci, startSlot - extendBefore - 1, 1)) {
+                extendBefore++;
+            }
+
+            const totalExtension = extendAfter + extendBefore;
+            if (totalExtension === 0) continue;
+
+            const newStart = startSlot - extendBefore;
+            const newLen = currentLen + totalExtension;
+
+            // Check BTB constraint on the new bounds
+            if (this.isBTB(schedule.filter((_, idx) => idx !== i), e.clientId!, e.therapistId, newStart, newLen)) continue;
+
+            // Book the extensions
+            if (extendAfter > 0) tracker.book(ti, ci, endSlot, extendAfter);
+            if (extendBefore > 0) tracker.book(ti, ci, newStart, extendBefore);
+
+            // Update the schedule entry in-place
+            schedule[i] = {
+                ...e,
+                startTime: minutesToTime(OP_START + newStart * SLOT_SIZE),
+                endTime: minutesToTime(OP_START + (newStart + newLen) * SLOT_SIZE),
+            };
+            clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (totalExtension * SLOT_SIZE));
+        }
+
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
             if (e.sessionType !== 'IndirectTime') return true;
@@ -653,6 +728,51 @@ export class FastScheduler {
                 }
             }
         });
+
+        // Per-client min duration proximity penalty: strongly discourage sessions that
+        // are close to (but just above) the client's insurance minimum — prefer comfortably
+        // above the minimum to reduce validation risk when lunches shift
+        s.forEach(e => {
+            if (e.sessionType === 'ABA' && e.clientId) {
+                const client = this.clients.find(c => c.id === e.clientId);
+                if (client) {
+                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                    const minDur = this.getMinDuration(client);
+                    if (dur < minDur) {
+                        // Below minimum: heavy penalty (should be caught by validation too)
+                        penalty += (minDur - dur) * 500;
+                    } else if (dur < minDur + 15) {
+                        // Within 15 min of minimum: moderate penalty to create buffer
+                        penalty += (minDur + 15 - dur) * 50;
+                    }
+                }
+            }
+        });
+
+        // Role hierarchy indirect time penalty: higher-ranked staff (BCBA, STAR 3)
+        // should have more non-billable time. Penalize when they have less indirect
+        // time than lower-ranked staff.
+        const therapistBillable = new Map<number, number>();
+        s.forEach(e => {
+            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+                const ti = this.therapists.findIndex(t => t.id === e.therapistId);
+                if (ti >= 0) therapistBillable.set(ti, (therapistBillable.get(ti) || 0) + (timeToMinutes(e.endTime) - timeToMinutes(e.startTime)));
+            }
+        });
+        const totalDayMinutes = OP_END - OP_START;
+        for (let i = 0; i < this.therapists.length; i++) {
+            const rankI = this.getSchedulingRank(this.therapists[i].role);
+            const indirectI = totalDayMinutes - (therapistBillable.get(i) || 0);
+            for (let j = 0; j < this.therapists.length; j++) {
+                if (i === j) continue;
+                const rankJ = this.getSchedulingRank(this.therapists[j].role);
+                const indirectJ = totalDayMinutes - (therapistBillable.get(j) || 0);
+                // Higher rank should have >= indirect time as lower rank
+                if (rankI > rankJ && indirectI < indirectJ) {
+                    penalty += (indirectJ - indirectI) * 5;
+                }
+            }
+        }
 
         // Team consistency penalty: penalize cross-team assignments based on therapist role.
         // STAR 3 staff are expected to handle cross-team clients; lower roles should rarely do so.
