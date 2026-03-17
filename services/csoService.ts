@@ -224,7 +224,19 @@ export class FastScheduler {
         });
 
         // Pass 1: Lunches (coverage-aware staggering)
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort(() => Math.random() - 0.5);
+        // Sort therapists for lunch placement: those who are the sole/rare qualified
+        // provider for clients go first (tightest constraints), with random tiebreaker
+        const therapistCriticality = this.therapists.map((t, ti) => {
+            let sole = 0;
+            for (let ci = 0; ci < this.clients.length; ci++) {
+                if (!qualMatrix[ci].has(ti)) continue;
+                if (qualMatrix[ci].size <= 2) sole++; // sole or near-sole provider
+            }
+            return sole;
+        });
+        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) =>
+            therapistCriticality[b.ti] - therapistCriticality[a.ti] || (Math.random() - 0.5)
+        );
         const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
 
         shuffledT.forEach(q => {
@@ -244,7 +256,8 @@ export class FastScheduler {
                 if (!tracker.isTFree(q.ti, s, 2) || lunchCount[s] >= maxConcurrentLunches || lunchCount[s+1] >= maxConcurrentLunches) continue;
 
                 // Coverage check: ensure every client this therapist could serve
-                // has at least 1 other qualified therapist NOT on lunch at this slot
+                // has at least 1 other qualified, available, preferably same-team therapist
+                // NOT on lunch at this slot
                 let uncovered = 0;
                 let allCovered = true;
                 for (let ci = 0; ci < this.clients.length; ci++) {
@@ -252,7 +265,9 @@ export class FastScheduler {
                     let hasCoverage = false;
                     for (const oti of qualMatrix[ci]) {
                         if (oti === q.ti) continue;
-                        if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti)) {
+                        // Must not be on lunch AND must actually be free at this slot
+                        if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti)
+                            && tracker.isTFree(oti, s, 1) && tracker.isTFree(oti, s + 1, 1)) {
                             hasCoverage = true;
                             break;
                         }
@@ -660,6 +675,23 @@ export class FastScheduler {
                 }
             }
         });
+
+        // Lunch distribution penalty: penalize clustering of lunches at the same slot
+        // Well-staggered lunches maintain better client coverage throughout the day
+        const lunchSlotCounts = new Map<number, number>();
+        s.forEach(e => {
+            if (e.sessionType === 'IndirectTime') {
+                const slot = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+                lunchSlotCounts.set(slot, (lunchSlotCounts.get(slot) || 0) + 1);
+                lunchSlotCounts.set(slot + 1, (lunchSlotCounts.get(slot + 1) || 0) + 1);
+            }
+        });
+        for (const count of lunchSlotCounts.values()) {
+            if (count > 1) {
+                // Quadratic penalty: 2 overlapping = 200, 3 = 900, etc.
+                penalty += (count - 1) * (count - 1) * 200;
+            }
+        }
 
         return penalty;
     }
