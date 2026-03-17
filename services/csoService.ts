@@ -224,8 +224,11 @@ export class FastScheduler {
         });
 
         // Pass 1: Lunches (coverage-aware staggering)
-        // Sort therapists for lunch placement: those who are the sole/rare qualified
-        // provider for clients go first (tightest constraints), with random tiebreaker
+        // Sort therapists for lunch placement:
+        // 1. Role hierarchy (higher-ranked staff first — BCBAs/STAR 3 get first pick
+        //    of lunch slots to maximize their indirect time)
+        // 2. Coverage criticality (sole/rare qualified providers — tightest constraints)
+        // 3. Random tiebreaker
         const therapistCriticality = this.therapists.map((t, ti) => {
             let sole = 0;
             for (let ci = 0; ci < this.clients.length; ci++) {
@@ -234,9 +237,13 @@ export class FastScheduler {
             }
             return sole;
         });
-        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) =>
-            therapistCriticality[b.ti] - therapistCriticality[a.ti] || (Math.random() - 0.5)
-        );
+        const shuffledT = this.therapists.map((t, ti) => ({t, ti})).sort((a, b) => {
+            const rankDiff = this.getSchedulingRank(b.t.role) - this.getSchedulingRank(a.t.role);
+            if (rankDiff !== 0) return rankDiff;
+            const critDiff = therapistCriticality[b.ti] - therapistCriticality[a.ti];
+            if (critDiff !== 0) return critDiff;
+            return Math.random() - 0.5;
+        });
         const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
 
         shuffledT.forEach(q => {
@@ -633,9 +640,11 @@ export class FastScheduler {
             for (let j = 0; j < data.length; j++) {
                 // If therapist i is higher rank (BCBA) than therapist j (BT)
                 // but therapist i has MORE billable time than j, penalize.
-                // We want to preserve 'blank' time for senior staff.
+                // We want to maximize indirect time for senior staff per the hierarchy.
+                // Scale penalty by rank gap so BCBA vs BT is much stronger than STAR 2 vs STAR 1.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
-                    penalty += (data[i].billable - data[j].billable) * 100;
+                    const rankGap = data[i].p - data[j].p;
+                    penalty += (data[i].billable - data[j].billable) * rankGap * 300;
                 }
             }
         }
