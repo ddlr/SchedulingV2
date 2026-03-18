@@ -40,6 +40,11 @@ class BitTracker {
             if (ti >= 0) { this.cT[ci].add(ti); }
         }
     }
+    public unbook(ti: number, ci: number, s: number, l: number) {
+        const m = ((1n << BigInt(l)) - 1n) << BigInt(s);
+        if (ti >= 0) { this.tBusy[ti] &= ~m; }
+        if (ci >= 0) { this.cBusy[ci] &= ~m; }
+    }
 }
 
 export class FastScheduler {
@@ -586,6 +591,7 @@ export class FastScheduler {
                 if (coverTi >= 0) {
                     schedule.push(this.ent(ci, coverTi, lunchStart, lunchLen, 'ABA'));
                     tracker.book(coverTi, ci, lunchStart, lunchLen);
+                    tSessionCount[coverTi]++;
                     clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (lunchLen * SLOT_SIZE));
                 }
             }
@@ -724,6 +730,179 @@ export class FastScheduler {
                 e.endTime = minutesToTime(OP_START + (eEnd + extended) * SLOT_SIZE);
                 tracker.book(ti, ci, eEnd, extended);
                 clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (extended * SLOT_SIZE));
+            }
+        }
+
+        // Pass 6: Lunch relocation repair — move lunches to eliminate remaining coverage gaps
+        // If a client has a gap because the only qualified therapist is on lunch,
+        // try moving that therapist's lunch to a different time and filling the gap.
+        const lunchWindowStart = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_START) - OP_START) / SLOT_SIZE);
+        const lunchWindowEnd = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
+
+        for (let ci = 0; ci < this.clients.length; ci++) {
+            const c = this.clients[ci];
+            for (let s = 0; s < NUM_SLOTS; s++) {
+                if (!tracker.isCFree(ci, s, 1)) continue;
+
+                // Find gap extent
+                let gapEnd = s + 1;
+                while (gapEnd < NUM_SLOTS && tracker.isCFree(ci, gapEnd, 1)) gapEnd++;
+                const gapLen = gapEnd - s;
+
+                // Find therapists whose lunch overlaps this gap and who could cover this client
+                const maxP = this.getMaxProviders(c);
+                const minLenSlots = Math.ceil(this.getMinDuration(c) / SLOT_SIZE);
+                const maxLenSlots = Math.floor(this.getMaxDuration(c) / SLOT_SIZE);
+
+                const lunchCandidates: number[] = [];
+                for (let ti = 0; ti < this.therapists.length; ti++) {
+                    const lunchS = therapistLunchStart[ti];
+                    if (lunchS < 0) continue;
+                    // Lunch must overlap the gap
+                    if (lunchS + 2 <= s || lunchS >= gapEnd) continue;
+                    if (this.therapists[ti].role === 'OT' || this.therapists[ti].role === 'SLP') continue;
+                    if (!this.meetsInsurance(this.therapists[ti], c)) continue;
+                    // Check provider limit — must be existing provider or have room
+                    if (tracker.cT[ci].size >= maxP && !tracker.cT[ci].has(ti)) continue;
+                    lunchCandidates.push(ti);
+                }
+
+                // Sort: same-team first, existing providers, then role rank
+                const clientTeam = c.teamId;
+                lunchCandidates.sort((a, b) => {
+                    const aSame = clientTeam && this.therapists[a].teamId === clientTeam ? 0 : 1;
+                    const bSame = clientTeam && this.therapists[b].teamId === clientTeam ? 0 : 1;
+                    if (aSame !== bSame) return aSame - bSame;
+                    const aKnown = tracker.cT[ci].has(a) ? 0 : 1;
+                    const bKnown = tracker.cT[ci].has(b) ? 0 : 1;
+                    if (aKnown !== bKnown) return aKnown - bKnown;
+                    return this.getSchedulingRank(this.therapists[a].role) - this.getSchedulingRank(this.therapists[b].role);
+                });
+
+                let gapFixed = false;
+                for (const ti of lunchCandidates) {
+                    const oldLunchS = therapistLunchStart[ti];
+                    const therapistId = this.therapists[ti].id;
+
+                    // --- Save state for revert ---
+                    const removedEntries: ScheduleEntry[] = [];
+                    const removedBookings: {ti: number, ci: number, s: number, l: number}[] = [];
+
+                    // Remove old lunch entry
+                    const lunchIdx = schedule.findIndex(e =>
+                        e.therapistId === therapistId && e.sessionType === 'IndirectTime');
+                    if (lunchIdx < 0) continue;
+                    removedEntries.push(schedule[lunchIdx]);
+                    schedule.splice(lunchIdx, 1);
+                    tracker.unbook(ti, -1, oldLunchS, 2);
+                    removedBookings.push({ti, ci: -1, s: oldLunchS, l: 2});
+
+                    // Remove handoff sessions created during old lunch window
+                    // These are ABA sessions by OTHER therapists covering clients of THIS therapist
+                    // that exactly span the old lunch window (2 slots)
+                    for (let i = schedule.length - 1; i >= 0; i--) {
+                        const e = schedule[i];
+                        if (e.sessionType !== 'ABA') continue;
+                        const eTi = this.therapists.findIndex(t => t.id === e.therapistId);
+                        if (eTi === ti) continue; // same therapist — not a handoff
+                        const eS = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
+                        const eL = Math.ceil((timeToMinutes(e.endTime) - timeToMinutes(e.startTime)) / SLOT_SIZE);
+                        if (eS === oldLunchS && eL === 2) {
+                            const eCi = this.clients.findIndex(cl => cl.id === e.clientId);
+                            if (eCi >= 0 && tracker.cT[eCi].has(ti)) {
+                                removedEntries.push(e);
+                                schedule.splice(i, 1);
+                                tracker.unbook(eTi, eCi, eS, eL);
+                                removedBookings.push({ti: eTi, ci: eCi, s: eS, l: eL});
+                                tSessionCount[eTi]--;
+                            }
+                        }
+                    }
+
+                    // Try to fill the gap with the now-free therapist
+                    const fillLen = Math.min(gapLen, maxLenSlots);
+                    const remainingMins = this.getMaxWeeklyMinutes(c) - (clientMinutes.get(ci) || 0);
+                    const cappedFillLen = Math.min(fillLen, Math.floor(remainingMins / SLOT_SIZE));
+                    let filledGap = false;
+
+                    if (cappedFillLen > 0 && tracker.isTFree(ti, s, cappedFillLen)
+                        && tracker.isCFree(ci, s, cappedFillLen)
+                        && !this.isBTB(schedule, c.id, therapistId, s, cappedFillLen)) {
+                        schedule.push(this.ent(ci, ti, s, cappedFillLen, 'ABA'));
+                        tracker.book(ti, ci, s, cappedFillLen);
+                        tSessionCount[ti]++;
+                        clientMinutes.set(ci, (clientMinutes.get(ci) || 0) + (cappedFillLen * SLOT_SIZE));
+                        filledGap = true;
+                    }
+
+                    // Try to re-place lunch at a new slot within the lunch window
+                    let newLunchPlaced = false;
+                    if (filledGap) {
+                        // Try slots sorted by distance from center of lunch window (prefer central slots)
+                        const lunchOpts: number[] = [];
+                        for (let ls = lunchWindowStart; ls <= lunchWindowEnd; ls++) lunchOpts.push(ls);
+                        // Prefer slots with fewer concurrent lunches
+                        lunchOpts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]));
+
+                        for (const newS of lunchOpts) {
+                            if (newS + 2 > NUM_SLOTS) continue;
+                            if (tracker.isTFree(ti, newS, 2)) {
+                                schedule.push(this.ent(-1, ti, newS, 2, 'IndirectTime'));
+                                tracker.book(ti, -1, newS, 2);
+                                therapistLunchStart[ti] = newS;
+                                lunchCount[newS]++;
+                                lunchCount[newS + 1]++;
+                                newLunchPlaced = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (filledGap && newLunchPlaced) {
+                        // Success — update old lunch counts and move on
+                        lunchCount[oldLunchS]--;
+                        lunchCount[oldLunchS + 1]--;
+                        gapFixed = true;
+                        break;
+                    } else {
+                        // Revert: remove newly added entries and restore removed ones
+                        if (filledGap) {
+                            // Remove the gap-fill entry we just added
+                            const fillIdx = schedule.findIndex(e =>
+                                e.therapistId === therapistId && e.clientId === c.id
+                                && e.sessionType === 'ABA'
+                                && Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE) === s);
+                            if (fillIdx >= 0) {
+                                schedule.splice(fillIdx, 1);
+                                tracker.unbook(ti, ci, s, cappedFillLen);
+                                tSessionCount[ti]--;
+                                clientMinutes.set(ci, (clientMinutes.get(ci) || 0) - (cappedFillLen * SLOT_SIZE));
+                            }
+                        }
+                        if (newLunchPlaced) {
+                            // Remove the new lunch we placed (shouldn't happen if filledGap is false, but safety)
+                            const newLunchIdx = schedule.findIndex(e =>
+                                e.therapistId === therapistId && e.sessionType === 'IndirectTime');
+                            if (newLunchIdx >= 0) {
+                                const newS = Math.floor((timeToMinutes(schedule[newLunchIdx].startTime) - OP_START) / SLOT_SIZE);
+                                schedule.splice(newLunchIdx, 1);
+                                tracker.unbook(ti, -1, newS, 2);
+                                lunchCount[newS]--;
+                                lunchCount[newS + 1]--;
+                            }
+                        }
+                        // Restore all removed entries and re-book their slots
+                        for (const entry of removedEntries) {
+                            schedule.push(entry);
+                        }
+                        for (const rb of removedBookings) {
+                            tracker.book(rb.ti, rb.ci, rb.s, rb.l);
+                            if (rb.ci >= 0) tSessionCount[rb.ti]++;
+                        }
+                        therapistLunchStart[ti] = oldLunchS;
+                    }
+                }
+                s = gapEnd - 1;
             }
         }
 
