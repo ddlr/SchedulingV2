@@ -6,8 +6,6 @@ const SLOT_SIZE = 15;
 const OP_START = timeToMinutes(COMPANY_OPERATING_HOURS_START);
 const OP_END = timeToMinutes(COMPANY_OPERATING_HOURS_END);
 const NUM_SLOTS = (OP_END - OP_START) / SLOT_SIZE;
-const IDEAL_SESSION_MIN = getIdealSessionMinMinutes();
-const IDEAL_SESSION_MAX = getIdealSessionMaxMinutes();
 
 const generateId = () => `cso-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 const getDayOfWeekFromDate = (date: Date): DayOfWeek => {
@@ -55,6 +53,8 @@ export class FastScheduler {
     private selectedDate: Date;
     private callouts: Callout[];
     private otherDayEntries: GeneratedSchedule;
+    private IDEAL_SESSION_MIN: number;
+    private IDEAL_SESSION_MAX: number;
 
     constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
         this.clients = clients;
@@ -64,6 +64,8 @@ export class FastScheduler {
         this.selectedDate = selectedDate;
         this.callouts = callouts;
         this.otherDayEntries = initialSchedule ? initialSchedule.filter(e => e.day !== day) : [];
+        this.IDEAL_SESSION_MIN = getIdealSessionMinMinutes();
+        this.IDEAL_SESSION_MAX = getIdealSessionMaxMinutes();
     }
 
     private getRoleRank(role: string): number {
@@ -465,7 +467,7 @@ export class FastScheduler {
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
 
                         const capSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-                        const idealMaxSlots = Math.min(Math.floor(IDEAL_SESSION_MAX / SLOT_SIZE), capSlots);
+                        const idealMaxSlots = Math.min(Math.floor(this.IDEAL_SESSION_MAX / SLOT_SIZE), capSlots);
                         // Build ordered length list: ideal range (longest first), then longer fallback
                         const lengthsToTry: number[] = [];
                         for (let l = idealMaxSlots; l >= minLenSlots; l--) lengthsToTry.push(l);
@@ -718,7 +720,7 @@ export class FastScheduler {
             const eStart = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
             const eEnd = Math.ceil((timeToMinutes(e.endTime) - OP_START) / SLOT_SIZE);
             const dur = eEnd - eStart;
-            const idealMinSlots = Math.ceil(IDEAL_SESSION_MIN / SLOT_SIZE);
+            const idealMinSlots = Math.ceil(this.IDEAL_SESSION_MIN / SLOT_SIZE);
             if (dur >= idealMinSlots) continue; // already long enough
 
             const maxLenSlots = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
@@ -1019,12 +1021,12 @@ export class FastScheduler {
         s.forEach(e => {
             if (e.sessionType === 'ABA') {
                 const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                if (dur > IDEAL_SESSION_MAX) {
+                if (dur > this.IDEAL_SESSION_MAX) {
                     // Stronger penalty the further over 2.5h — discourage long sessions
-                    penalty += (dur - IDEAL_SESSION_MAX) * 10;
-                } else if (dur < IDEAL_SESSION_MIN) {
+                    penalty += (dur - this.IDEAL_SESSION_MAX) * 10;
+                } else if (dur < this.IDEAL_SESSION_MIN) {
                     // Mild penalty for short sessions (handoffs, edge cases are okay)
-                    penalty += (IDEAL_SESSION_MIN - dur) * 2;
+                    penalty += (this.IDEAL_SESSION_MIN - dur) * 2;
                 }
             }
         });
