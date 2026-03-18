@@ -210,7 +210,7 @@ const SystemConfigPanel: React.FC = () => {
 
         <section className="space-y-6 lg:col-span-2">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Scheduling Constraints</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Max Sessions Per Therapist</label>
               <input
