@@ -1,5 +1,5 @@
 import { Client, Therapist, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, TherapistRole } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist, getIdealSessionMinMinutes, getIdealSessionMaxMinutes } from '../constants';
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist } from '../constants';
 import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from '../utils/validationService';
 
 const SLOT_SIZE = 15;
@@ -53,8 +53,8 @@ export class FastScheduler {
     private selectedDate: Date;
     private callouts: Callout[];
     private otherDayEntries: GeneratedSchedule;
-    private IDEAL_SESSION_MIN: number;
-    private IDEAL_SESSION_MAX: number;
+    private readonly IDEAL_SESSION_MIN = 90;
+    private readonly IDEAL_SESSION_MAX = 150;
 
     constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
         this.clients = clients;
@@ -64,8 +64,6 @@ export class FastScheduler {
         this.selectedDate = selectedDate;
         this.callouts = callouts;
         this.otherDayEntries = initialSchedule ? initialSchedule.filter(e => e.day !== day) : [];
-        this.IDEAL_SESSION_MIN = getIdealSessionMinMinutes();
-        this.IDEAL_SESSION_MAX = getIdealSessionMaxMinutes();
     }
 
     private getRoleRank(role: string): number {

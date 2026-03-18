@@ -30,8 +30,6 @@ export const getAllAlliedHealthServices = () => _cachedConfig.allAlliedHealthSer
 export const getAllSessionTypes = () => _cachedConfig.allSessionTypes;
 export const getClientColorPalette = () => _cachedConfig.clientColorPalette;
 export const getMaxSessionsPerTherapist = () => _cachedConfig.maxSessionsPerTherapist ?? 0;
-export const getIdealSessionMinMinutes = () => _cachedConfig.idealSessionMinMinutes ?? 90;
-export const getIdealSessionMaxMinutes = () => _cachedConfig.idealSessionMaxMinutes ?? 150;
 
 export const COMPANY_OPERATING_HOURS_START = getCompanyOperatingHoursStart();
 export const COMPANY_OPERATING_HOURS_END = getCompanyOperatingHoursEnd();
