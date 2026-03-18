@@ -53,8 +53,6 @@ export class FastScheduler {
     private selectedDate: Date;
     private callouts: Callout[];
     private otherDayEntries: GeneratedSchedule;
-    private readonly IDEAL_SESSION_MIN = 90;
-    private readonly IDEAL_SESSION_MAX = 150;
 
     constructor(clients: Client[], therapists: Therapist[], insuranceQualifications: InsuranceQualification[], day: DayOfWeek, selectedDate: Date, callouts: Callout[], initialSchedule?: GeneratedSchedule) {
         this.clients = clients;
@@ -458,18 +456,15 @@ export class FastScheduler {
                         const maxP = this.getMaxProviders(target.c);
                         if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
 
-                        // Try session lengths: prefer ideal range (1.5-2.5h), then fallback to longer
+                        // Try session lengths from max allowed down to min allowed
                         const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
                         const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
                         const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
 
                         const capSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-                        const idealMaxSlots = Math.min(Math.floor(this.IDEAL_SESSION_MAX / SLOT_SIZE), capSlots);
-                        // Build ordered length list: ideal range (longest first), then longer fallback
                         const lengthsToTry: number[] = [];
-                        for (let l = idealMaxSlots; l >= minLenSlots; l--) lengthsToTry.push(l);
-                        for (let l = capSlots; l > idealMaxSlots; l--) lengthsToTry.push(l);
+                        for (let l = capSlots; l >= minLenSlots; l--) lengthsToTry.push(l);
 
                         for (const len of lengthsToTry) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
@@ -707,7 +702,7 @@ export class FastScheduler {
             }
         }
 
-        // Pass 5b: Session extension — grow short ABA sessions toward ideal minimum
+        // Pass 5b: Session extension — grow short ABA sessions toward client minimum
         for (const e of schedule) {
             if (e.sessionType !== 'ABA' || !e.clientId) continue;
             const ci = this.clients.findIndex(c => c.id === e.clientId);
@@ -718,12 +713,12 @@ export class FastScheduler {
             const eStart = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
             const eEnd = Math.ceil((timeToMinutes(e.endTime) - OP_START) / SLOT_SIZE);
             const dur = eEnd - eStart;
-            const idealMinSlots = Math.ceil(this.IDEAL_SESSION_MIN / SLOT_SIZE);
-            if (dur >= idealMinSlots) continue; // already long enough
+            const minLenSlots = Math.ceil(this.getMinDuration(this.clients[ci]) / SLOT_SIZE);
+            if (dur >= minLenSlots) continue; // already long enough
 
             const maxLenSlots = Math.floor(this.getMaxDuration(this.clients[ci]) / SLOT_SIZE);
             const remainingMins = this.getMaxWeeklyMinutes(this.clients[ci]) - (clientMinutes.get(ci) || 0);
-            const maxExtend = Math.min(idealMinSlots - dur, maxLenSlots - dur, Math.floor(remainingMins / SLOT_SIZE));
+            const maxExtend = Math.min(minLenSlots - dur, maxLenSlots - dur, Math.floor(remainingMins / SLOT_SIZE));
 
             // Try extending forward
             let extended = 0;
@@ -1015,16 +1010,19 @@ export class FastScheduler {
             }
         }
 
-        // Session duration preference: penalize ABA sessions outside ideal 1.5-2.5h range
+        // Session duration preference: penalize ABA sessions outside client min/max range
         s.forEach(e => {
-            if (e.sessionType === 'ABA') {
-                const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
-                if (dur > this.IDEAL_SESSION_MAX) {
-                    // Stronger penalty the further over 2.5h — discourage long sessions
-                    penalty += (dur - this.IDEAL_SESSION_MAX) * 10;
-                } else if (dur < this.IDEAL_SESSION_MIN) {
-                    // Mild penalty for short sessions (handoffs, edge cases are okay)
-                    penalty += (this.IDEAL_SESSION_MIN - dur) * 2;
+            if (e.sessionType === 'ABA' && e.clientId) {
+                const client = this.clients.find(c => c.id === e.clientId);
+                if (client) {
+                    const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
+                    const maxDur = this.getMaxDuration(client);
+                    const minDur = this.getMinDuration(client);
+                    if (dur > maxDur) {
+                        penalty += (dur - maxDur) * 10;
+                    } else if (dur < minDur) {
+                        penalty += (minDur - dur) * 2;
+                    }
                 }
             }
         });
