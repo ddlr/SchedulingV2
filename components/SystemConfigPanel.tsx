@@ -222,6 +222,30 @@ const SystemConfigPanel: React.FC = () => {
               />
               <p className="text-[10px] text-slate-400 mt-1 ml-1">0 = unlimited</p>
             </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Ideal Session Min (minutes)</label>
+              <input
+                type="number"
+                min={15}
+                step={15}
+                value={config.idealSessionMinMinutes ?? 90}
+                onChange={(e) => setConfig({ ...config, idealSessionMinMinutes: parseInt(e.target.value) || 90 })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              />
+              <p className="text-[10px] text-slate-400 mt-1 ml-1">Preferred minimum ABA session length</p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Ideal Session Max (minutes)</label>
+              <input
+                type="number"
+                min={15}
+                step={15}
+                value={config.idealSessionMaxMinutes ?? 150}
+                onChange={(e) => setConfig({ ...config, idealSessionMaxMinutes: parseInt(e.target.value) || 150 })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-700 font-medium focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all"
+              />
+              <p className="text-[10px] text-slate-400 mt-1 ml-1">Preferred maximum ABA session length</p>
+            </div>
           </div>
         </section>
       </div>

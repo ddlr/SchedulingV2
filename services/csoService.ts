@@ -1,13 +1,13 @@
 import { Client, Therapist, GeneratedSchedule, DayOfWeek, Callout, GAGenerationResult, ScheduleEntry, SessionType, InsuranceQualification, TherapistRole } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist } from '../constants';
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, IDEAL_LUNCH_WINDOW_START, IDEAL_LUNCH_WINDOW_END_FOR_START, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist, getIdealSessionMinMinutes, getIdealSessionMaxMinutes } from '../constants';
 import { validateFullSchedule, timeToMinutes, minutesToTime, sessionsOverlap, isDateAffectedByCalloutRange } from '../utils/validationService';
 
 const SLOT_SIZE = 15;
 const OP_START = timeToMinutes(COMPANY_OPERATING_HOURS_START);
 const OP_END = timeToMinutes(COMPANY_OPERATING_HOURS_END);
 const NUM_SLOTS = (OP_END - OP_START) / SLOT_SIZE;
-const IDEAL_SESSION_MIN = 90;  // 1.5 hours
-const IDEAL_SESSION_MAX = 150; // 2.5 hours
+const IDEAL_SESSION_MIN = getIdealSessionMinMinutes();
+const IDEAL_SESSION_MAX = getIdealSessionMaxMinutes();
 
 const generateId = () => `cso-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 const getDayOfWeekFromDate = (date: Date): DayOfWeek => {
@@ -251,6 +251,20 @@ export class FastScheduler {
         });
         const lunchAtSlot: Set<number>[] = new Array(NUM_SLOTS).fill(null).map(() => new Set());
 
+        // Helper: check if any same-team therapist is on lunch at slot s or s+1
+        const hasTeamLunchOverlap = (teamId: string | undefined, s: number): boolean => {
+            if (!teamId) return false;
+            for (const oti of lunchAtSlot[s]) {
+                if (this.therapists[oti].teamId === teamId) return true;
+            }
+            if (s + 1 < NUM_SLOTS) {
+                for (const oti of lunchAtSlot[s + 1]) {
+                    if (this.therapists[oti].teamId === teamId) return true;
+                }
+            }
+            return false;
+        };
+
         shuffledT.forEach(q => {
             // Check if already has a lunch or indirect task in the lunch window from initialSchedule
             if (schedule.some(e => e.therapistId === q.t.id && e.sessionType === 'IndirectTime')) return;
@@ -259,74 +273,67 @@ export class FastScheduler {
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
             const opts: number[] = [];
             for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => {
-                const baseA = lunchCount[a] + lunchCount[a+1];
-                const baseB = lunchCount[b] + lunchCount[b+1];
-                // Penalize slots where same-team therapists are already on lunch
-                let teamA = 0, teamB = 0;
-                if (q.t.teamId) {
-                    for (const oti of lunchAtSlot[a]) {
-                        if (this.therapists[oti].teamId === q.t.teamId) teamA++;
-                    }
-                    if (a + 1 < NUM_SLOTS) for (const oti of lunchAtSlot[a + 1]) {
-                        if (this.therapists[oti].teamId === q.t.teamId) teamA++;
-                    }
-                    for (const oti of lunchAtSlot[b]) {
-                        if (this.therapists[oti].teamId === q.t.teamId) teamB++;
-                    }
-                    if (b + 1 < NUM_SLOTS) for (const oti of lunchAtSlot[b + 1]) {
-                        if (this.therapists[oti].teamId === q.t.teamId) teamB++;
-                    }
-                }
-                return (baseA + teamA * 3) - (baseB + teamB * 3) + (Math.random() - 0.5);
-            });
+            // Sort by global lunch concurrency with random tiebreak
+            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
 
-            let bestFallback = -1;
-            let bestFallbackUncovered = Infinity;
+            // Two-pass approach: Phase 1 = no same-team overlap, Phase 2 = allow overlap
+            const placeLunch = (allowTeamOverlap: boolean): boolean => {
+                let bestFallback = -1;
+                let bestFallbackUncovered = Infinity;
 
-            for (const s of opts) {
-                if (!tracker.isTFree(q.ti, s, 2) || lunchCount[s] >= maxConcurrentLunches || lunchCount[s+1] >= maxConcurrentLunches) continue;
+                for (const s of opts) {
+                    if (!tracker.isTFree(q.ti, s, 2) || lunchCount[s] >= maxConcurrentLunches || lunchCount[s+1] >= maxConcurrentLunches) continue;
 
-                // Coverage check: ensure every client this therapist could serve
-                // has at least 1 other qualified, available, preferably same-team therapist
-                // NOT on lunch at this slot
-                let uncovered = 0;
-                let allCovered = true;
-                for (let ci = 0; ci < this.clients.length; ci++) {
-                    if (!qualMatrix[ci].has(q.ti)) continue;
-                    let hasCoverage = false;
-                    for (const oti of qualMatrix[ci]) {
-                        if (oti === q.ti) continue;
-                        // Must not be on lunch AND must actually be free at this slot
-                        if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti)
-                            && tracker.isTFree(oti, s, 1) && tracker.isTFree(oti, s + 1, 1)) {
-                            hasCoverage = true;
-                            break;
+                    // Hard constraint: reject if same-team therapist already lunching here (Phase 1)
+                    if (!allowTeamOverlap && hasTeamLunchOverlap(q.t.teamId, s)) continue;
+
+                    // Coverage check: ensure every client this therapist could serve
+                    // has at least 1 other qualified, available therapist NOT on lunch at this slot
+                    let uncovered = 0;
+                    let allCovered = true;
+                    for (let ci = 0; ci < this.clients.length; ci++) {
+                        if (!qualMatrix[ci].has(q.ti)) continue;
+                        let hasCoverage = false;
+                        for (const oti of qualMatrix[ci]) {
+                            if (oti === q.ti) continue;
+                            if (!lunchAtSlot[s].has(oti) && !lunchAtSlot[s + 1].has(oti)
+                                && tracker.isTFree(oti, s, 1) && tracker.isTFree(oti, s + 1, 1)) {
+                                hasCoverage = true;
+                                break;
+                            }
                         }
+                        if (!hasCoverage) { allCovered = false; uncovered++; }
                     }
-                    if (!hasCoverage) { allCovered = false; uncovered++; }
+
+                    if (allCovered) {
+                        schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
+                        tracker.book(q.ti, -1, s, 2);
+                        lunchCount[s]++; lunchCount[s+1]++;
+                        lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
+                        return true;
+                    }
+                    if (uncovered < bestFallbackUncovered) {
+                        bestFallbackUncovered = uncovered;
+                        bestFallback = s;
+                    }
                 }
 
-                if (allCovered) {
+                // Fallback: no perfect slot, use the one with fewest uncovered clients
+                if (bestFallback >= 0) {
+                    const s = bestFallback;
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
                     tracker.book(q.ti, -1, s, 2);
                     lunchCount[s]++; lunchCount[s+1]++;
                     lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
-                    return;
+                    return true;
                 }
-                if (uncovered < bestFallbackUncovered) {
-                    bestFallbackUncovered = uncovered;
-                    bestFallback = s;
-                }
-            }
+                return false;
+            };
 
-            // Fallback: no perfect slot, use the one with fewest uncovered clients
-            if (bestFallback >= 0) {
-                const s = bestFallback;
-                schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
-                tracker.book(q.ti, -1, s, 2);
-                lunchCount[s]++; lunchCount[s+1]++;
-                lunchAtSlot[s].add(q.ti); lunchAtSlot[s + 1].add(q.ti);
+            // Phase 1: Try to place lunch with NO same-team overlap
+            if (!placeLunch(false)) {
+                // Phase 2: Allow same-team overlap as last resort
+                placeLunch(true);
             }
         });
 
@@ -1047,17 +1054,38 @@ export class FastScheduler {
         // Lunch distribution penalty: penalize clustering of lunches at the same slot
         // Well-staggered lunches maintain better client coverage throughout the day
         const lunchSlotCounts = new Map<number, number>();
+        // Track same-team lunch overlaps per slot: Map<slot, Map<teamId, count>>
+        const teamLunchSlots = new Map<number, Map<string, number>>();
         s.forEach(e => {
             if (e.sessionType === 'IndirectTime') {
                 const slot = Math.floor((timeToMinutes(e.startTime) - OP_START) / SLOT_SIZE);
                 lunchSlotCounts.set(slot, (lunchSlotCounts.get(slot) || 0) + 1);
                 lunchSlotCounts.set(slot + 1, (lunchSlotCounts.get(slot + 1) || 0) + 1);
+
+                // Track team overlap
+                const therapist = this.therapists.find(t => t.id === e.therapistId);
+                if (therapist?.teamId) {
+                    for (const sl of [slot, slot + 1]) {
+                        if (!teamLunchSlots.has(sl)) teamLunchSlots.set(sl, new Map());
+                        const teamMap = teamLunchSlots.get(sl)!;
+                        teamMap.set(therapist.teamId, (teamMap.get(therapist.teamId) || 0) + 1);
+                    }
+                }
             }
         });
         for (const count of lunchSlotCounts.values()) {
             if (count > 1) {
                 // Quadratic penalty: 2 overlapping = 200, 3 = 900, etc.
                 penalty += (count - 1) * (count - 1) * 200;
+            }
+        }
+        // Heavy penalty for same-team lunch overlap — teams should stagger lunches
+        for (const teamMap of teamLunchSlots.values()) {
+            for (const count of teamMap.values()) {
+                if (count > 1) {
+                    // 2 same-team at same slot = 5000, 3 = 20000, etc.
+                    penalty += (count - 1) * (count - 1) * 5000;
+                }
             }
         }
 

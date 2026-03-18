@@ -18,6 +18,8 @@ export interface SystemConfig {
   clientColorPalette: string[];
   workingDays: DayOfWeek[];
   maxSessionsPerTherapist: number;
+  idealSessionMinMinutes: number;
+  idealSessionMaxMinutes: number;
 }
 
 const DEFAULT_CONFIG: SystemConfig = {
@@ -70,6 +72,8 @@ const DEFAULT_CONFIG: SystemConfig = {
     DayOfWeek.FRIDAY
   ],
   maxSessionsPerTherapist: 0,
+  idealSessionMinMinutes: 90,
+  idealSessionMaxMinutes: 150,
 };
 
 let _config: SystemConfig = { ...DEFAULT_CONFIG };
