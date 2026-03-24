@@ -342,9 +342,6 @@ const App: React.FC = () => {
     setError(null); setGaStatusMessage(null);
     const baseConfig = baseScheduleService.getBaseSchedules().find(bs => bs.id === baseScheduleId);
     if (baseConfig && baseConfig.schedule) {
-      // Ensure all schedule entries from base have IDs when loading
-      const scheduleWithIds = baseConfig.schedule.map(entry => ({...entry, id: entry.id || generateScheduleEntryId() }));
-      setSchedule([...scheduleWithIds]);
       const today = new Date();
       let newSelectedDate = null;
       for (let i = 0; i < 7; i++) {
@@ -352,7 +349,17 @@ const App: React.FC = () => {
           const dayOfWeekName = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][tempDate.getDay()];
           if (baseConfig.appliesToDays.includes(dayOfWeekName)) { newSelectedDate = tempDate; break; }
       }
-      setSelectedDate(newSelectedDate || today);
+      const viewDate = newSelectedDate || today;
+      const viewDay = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY][viewDate.getDay()];
+
+      // Remap all entries' day field to match the viewing date so they appear in the schedule grid
+      const scheduleWithIds = baseConfig.schedule.map(entry => ({
+        ...entry,
+        id: entry.id || generateScheduleEntryId(),
+        day: viewDay
+      }));
+      setSchedule([...scheduleWithIds]);
+      setSelectedDate(viewDate);
 
       if (newSelectedDate) {
           const validationErrors = validateFullSchedule(scheduleWithIds, clients, therapists, availableInsuranceQualifications, newSelectedDate, COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, callouts);
