@@ -428,6 +428,7 @@ export class FastScheduler {
     }
 
 
+
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
         let minScore = Infinity;
