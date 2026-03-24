@@ -154,7 +154,7 @@ export const validateSessionEntry = (
   const isAlliedHealth = sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP';
   if (!therapistId && !isAlliedHealth) {
     errors.push({ ruleId: "UNASSIGNED_SESSION", message: `Session for ${clientName || 'N/A'} is not assigned to a staff member.` });
-  } else if (!therapistData) {
+  } else if (therapistId && !therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
   } else if (therapistData) {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
