@@ -269,36 +269,12 @@ export class FastScheduler {
                         schedule.push(this.ent(target.ci, selectedTi, s, len, type));
                         tracker.book(selectedTi, target.ci, s, len);
                         tSessionCount[selectedTi]++;
-                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                     } else {
-                        // Try alternative time slots — scan the full day for a free SLP/OT
-                        for (let altS = 0; altS + len <= NUM_SLOTS; altS++) {
-                            if (altS === s) continue;
-                            if (!tracker.isCFree(target.ci, altS, len)) continue;
-
-                            let altTi = -1;
-                            if (need.preferredProviderId) {
-                                const ti = this.therapists.findIndex(t => t.id === need.preferredProviderId);
-                                if (ti >= 0 && this.therapists[ti].role === serviceRole
-                                    && tracker.isTFree(ti, altS, len)) {
-                                    altTi = ti;
-                                }
-                            }
-                            if (altTi === -1) {
-                                const eligible = this.therapists.map((t, ti) => ({t, ti}))
-                                    .filter(x => x.t.role === serviceRole && tracker.isTFree(x.ti, altS, len))
-                                    .sort(() => Math.random() - 0.5);
-                                if (eligible.length > 0) altTi = eligible[0].ti;
-                            }
-                            if (altTi !== -1) {
-                                schedule.push(this.ent(target.ci, altTi, altS, len, type));
-                                tracker.book(altTi, target.ci, altS, len);
-                                tSessionCount[altTi]++;
-                                clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
-                                break;
-                            }
-                        }
+                        // Fallback: keep unassigned if no eligible therapist is available
+                        schedule.push(this.entUnassigned(target.ci, s, len, type));
+                        tracker.book(-1, target.ci, s, len);
                     }
+                    clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                 }
             });
         });
@@ -427,7 +403,10 @@ export class FastScheduler {
         return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: therapist.id, therapistName: therapist.name, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
     }
 
-
+    private entUnassigned(ci: number, s: number, l: number, type: SessionType): ScheduleEntry {
+        const client = ci >= 0 ? this.clients[ci] : null;
+        return { id: generateId(), clientId: client ? client.id : null, clientName: client ? client.name : null, therapistId: null, therapistName: null, day: this.day, startTime: minutesToTime(OP_START + s * SLOT_SIZE), endTime: minutesToTime(OP_START + (s + l) * SLOT_SIZE), sessionType: type };
+    }
 
     public async run(initialSchedule?: GeneratedSchedule): Promise<GeneratedSchedule> {
         let best: GeneratedSchedule = [];
