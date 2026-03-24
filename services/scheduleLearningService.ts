@@ -3,6 +3,10 @@ import { GeneratedSchedule, ScheduleEntry, Client, Therapist, ValidationError } 
 import { supabase } from '../lib/supabase';
 import { timeToMinutes, minutesToTime } from '../utils/validationService';
 
+const generateFeedbackId = () => `fb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+const generatePatternId = () => `pat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+const generateViolationId = () => `vio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 export interface ScheduleFeedback {
   schedule: GeneratedSchedule;
   rating: number;
@@ -30,6 +34,7 @@ export class ScheduleLearningService {
   static async submitFeedback(feedback: ScheduleFeedback): Promise<boolean> {
     try {
       const { error } = await supabase.from('schedule_feedback').insert({
+        id: generateFeedbackId(),
         schedule_json: feedback.schedule,
         rating: feedback.rating,
         violations_count: feedback.violationsCount,
@@ -210,6 +215,7 @@ export class ScheduleLearningService {
     >();
 
     schedule.forEach(entry => {
+      if (!entry.therapistId) return;
       if (!therapistStats.has(entry.therapistId)) {
         therapistStats.set(entry.therapistId, {
           billableMinutes: 0,
@@ -266,6 +272,7 @@ export class ScheduleLearningService {
         const { error: insertError } = await supabase
           .from('schedule_patterns')
           .insert({
+            id: generatePatternId(),
             pattern_type: pattern.type,
             pattern_data: pattern.data,
             effectiveness_score: effectivenessBoost,
@@ -304,6 +311,7 @@ export class ScheduleLearningService {
         const { error: insertError } = await supabase
           .from('constraint_violations_log')
           .insert({
+            id: generateViolationId(),
             rule_id: ruleId,
             violation_count: 1,
             created_at: new Date().toISOString()

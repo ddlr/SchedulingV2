@@ -23,16 +23,24 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
   placeholder = "Select..."
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredItems = useMemo(() => {
+    if (!searchTerm) return items;
+    const lower = searchTerm.toLowerCase();
+    return items.filter(item => item.name.toLowerCase().includes(lower));
+  }, [items, searchTerm]);
 
   const itemsByGroup = useMemo(() => {
-    return items.reduce((acc, item) => {
+    return filteredItems.reduce((acc, item) => {
       const group = item.group || '';
       if (!acc[group]) acc[group] = [];
       acc[group].push(item);
       return acc;
-    }, {} as Record<string, typeof items>);
-  }, [items]);
+    }, {} as Record<string, typeof filteredItems>);
+  }, [filteredItems]);
 
   const sortedGroups = useMemo(() => {
     return Object.keys(itemsByGroup).sort((a, b) => {
@@ -46,6 +54,7 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setSearchTerm('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -54,7 +63,17 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
     };
   }, []);
 
-  const handleToggle = () => setIsOpen(!isOpen);
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    const next = !isOpen;
+    setIsOpen(next);
+    if (!next) setSearchTerm('');
+  };
 
   const handleCheckboxChange = (itemId: string) => {
     const newSelectedIds = selectedIds.includes(itemId)
@@ -65,9 +84,12 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      onSelectionChange(items.map(item => item.id));
+      const filteredIds = new Set(filteredItems.map(item => item.id));
+      const merged = Array.from(new Set([...selectedIds, ...filteredIds]));
+      onSelectionChange(merged);
     } else {
-      onSelectionChange([]);
+      const filteredIds = new Set(filteredItems.map(item => item.id));
+      onSelectionChange(selectedIds.filter(id => !filteredIds.has(id)));
     }
   };
 
@@ -80,8 +102,8 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
     }
     return `${selectedIds.length} ${label} selected`;
   };
-  
-  const isAllSelected = items.length > 0 && selectedIds.length === items.length;
+
+  const isAllFilteredSelected = filteredItems.length > 0 && filteredItems.every(item => selectedIds.includes(item.id));
 
   return (
     <div className="relative flex-grow min-w-[200px]" ref={dropdownRef}>
@@ -99,19 +121,29 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-20 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute z-20 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl max-h-72 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="sticky top-0 bg-white p-2 border-b border-slate-50 z-10">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={`Search ${label.toLowerCase()}...`}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300 outline-none focus:ring-2 focus:ring-brand-blue/20 transition-all"
+            />
+          </div>
           <ul className="p-2 space-y-1" role="listbox" aria-label={`${label} options`}>
-            {items.length > 0 && (
+            {filteredItems.length > 0 && (
                  <li className="px-2 py-2 border-b border-slate-50">
                     <label className="flex items-center space-x-3 text-sm font-semibold text-slate-900 cursor-pointer p-1 rounded-xl hover:bg-slate-50 transition-colors">
                       <input
                         type="checkbox"
                         className="form-checkbox h-4 w-4 text-brand-blue rounded border-slate-200 focus:ring-brand-blue/20"
-                        checked={isAllSelected}
+                        checked={isAllFilteredSelected}
                         onChange={handleSelectAll}
-                        aria-label={isAllSelected ? `Deselect all ${label}` : `Select all ${label}`}
+                        aria-label={isAllFilteredSelected ? `Deselect all ${label}` : `Select all ${label}`}
                       />
-                      <span>{isAllSelected ? 'Deselect All' : 'Select All'}</span>
+                      <span>{isAllFilteredSelected ? 'Deselect All' : 'Select All'}</span>
                     </label>
                   </li>
             )}
@@ -139,7 +171,8 @@ const DropdownFilter: React.FC<DropdownFilterProps> = ({
                 ))}
               </React.Fragment>
             ))}
-            {items.length === 0 && <li className="px-3 py-4 text-sm text-slate-400 italic text-center">No options available</li>}
+            {filteredItems.length === 0 && searchTerm && <li className="px-3 py-4 text-sm text-slate-400 italic text-center">No matches for "{searchTerm}"</li>}
+            {filteredItems.length === 0 && !searchTerm && <li className="px-3 py-4 text-sm text-slate-400 italic text-center">No options available</li>}
           </ul>
         </div>
       )}

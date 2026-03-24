@@ -32,6 +32,19 @@ export const getClientColor = (id: string, allClientIds?: string[]): string => {
 };
 
 /**
+ * Returns the first palette color not already in use (case-insensitive).
+ * Falls back to cycling through the palette if all colors are taken.
+ */
+export const getNextAvailableColor = (usedColors: string[]): string => {
+  const palette = getClientColorPalette();
+  if (!palette || palette.length === 0) return '#3B82F6';
+  const uniquePalette = [...new Set(palette)];
+  const usedSet = new Set(usedColors.map(c => c.toUpperCase()));
+  const available = uniquePalette.find(c => !usedSet.has(c.toUpperCase()));
+  return available || uniquePalette[usedColors.length % uniquePalette.length];
+};
+
+/**
  * Determines whether black or white text should be used on a given background color for better contrast.
  */
 export const getContrastText = (hexcolor: string): string => {

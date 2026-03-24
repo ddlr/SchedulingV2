@@ -86,7 +86,10 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   canEdit = true,
   onMoveScheduleEntry,
   onOpenEditSessionModal,
-  onOpenAddSessionModal
+  onOpenAddSessionModal,
+  highlightedClientIds = [],
+  highlightedTherapistIds = [],
+  highlightedTeamIds = [],
 }) => {
 
   if (!scheduledFullDate) {
@@ -99,6 +102,20 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
   }
 
   const allClientIds = useMemo(() => clients.map(c => c.id), [clients]);
+
+  const hasAnyFilter = highlightedClientIds.length > 0 || highlightedTherapistIds.length > 0 || highlightedTeamIds.length > 0;
+
+  const isTherapistDimmed = useMemo(() => {
+    if (!hasAnyFilter) return (_t: Therapist) => false;
+    const teamSet = new Set(highlightedTeamIds);
+    const therapistSet = new Set(highlightedTherapistIds);
+    return (t: Therapist) => {
+      if (highlightedTeamIds.length > 0 && (!t.teamId || !teamSet.has(t.teamId))) return true;
+      if (highlightedTherapistIds.length > 0 && !therapistSet.has(t.id)) return true;
+      return false;
+    };
+  }, [hasAnyFilter, highlightedTeamIds, highlightedTherapistIds]);
+
 
   const scheduledDayOfWeek = getDayOfWeekFromDate(scheduledFullDate);
   if (!scheduledDayOfWeek) {
@@ -314,6 +331,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                 lastTeamId = teamId;
                 const isCollapsed = collapsedTeams.has(teamId);
                 const staffCount = teamsData[teamId].therapists.length;
+                const rowDimmed = isTherapistDimmed(therapist);
 
                 return (
                   <React.Fragment key={therapist.id}>
@@ -347,7 +365,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                     {/* Staff row - hidden when team is collapsed */}
                     {!isCollapsed && (
-                      <tr className="group/row hover:bg-slate-50/30 transition-colors">
+                      <tr className={`group/row hover:bg-slate-50/30 transition-all ${rowDimmed ? 'opacity-30' : ''}`}>
                         <td className="sticky left-0 z-20 bg-white group-hover/row:bg-slate-50/80 border-b border-r border-slate-100 px-4 py-2 transition-colors" style={{ minWidth: '200px' }}>
                           <div className="flex items-center gap-2">
                             <div className="w-1 h-8 rounded-full" style={{ backgroundColor: teamColor }}></div>
@@ -363,6 +381,11 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                           if (entryData) {
                             const { entry, colSpan } = entryData;
                             const styling = getSessionStyling(entry.sessionType, entry.clientId, clients, allClientIds);
+                            const entryDimmedByClient = !rowDimmed && highlightedClientIds.length > 0 && entry.clientId != null && !highlightedClientIds.includes(entry.clientId);
+                            const entryStyle = {
+                              ...(styling.style || { backgroundColor: styling.bgColor, color: styling.textColor, borderColor: styling.borderColor }),
+                              ...(entryDimmedByClient ? { opacity: 0.3, filter: 'grayscale(1)' } : {}),
+                            };
                             return (
                               <td
                                 key={entry.id}
@@ -376,7 +399,7 @@ const ScheduleView: React.FC<ScheduleViewProps> = ({
                               >
                                 <div
                                   className="h-9 rounded-lg border flex items-center px-2 gap-1 overflow-hidden transition-all hover:shadow-md hover:brightness-95"
-                                  style={styling.style || { backgroundColor: styling.bgColor, color: styling.textColor, borderColor: styling.borderColor }}
+                                  style={entryStyle}
                                 >
                                   <span className="text-[11px] font-bold truncate">{entry.clientName || styling.display}</span>
                                   {colSpan >= 4 && (

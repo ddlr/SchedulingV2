@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { User } from './authService';
 
@@ -20,6 +21,7 @@ export const userManagementService = {
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -35,35 +37,51 @@ export const userManagementService = {
 
   async createUser(input: CreateUserInput): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        return { success: false, error: 'Not authenticated' };
-      }
+      // Use a separate client for signUp so the admin's session is not affected
+      const signUpClient = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
 
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: input.email,
-          password: input.password,
-          full_name: input.full_name,
-          role: input.role,
-        }),
+      // Step 1: Create auth user via signUp
+      const { data: signUpData, error: signUpError } = await signUpClient.auth.signUp({
+        email: input.email,
+        password: input.password,
       });
 
-      const result = await response.json();
+      if (signUpError) {
+        console.error('create-user: signUp failed', signUpError);
+        return { success: false, error: signUpError.message };
+      }
 
-      if (!response.ok) {
-        return { success: false, error: result.error || 'Failed to create user' };
+      if (!signUpData.user) {
+        return { success: false, error: 'Failed to create auth user' };
+      }
+
+      // Supabase returns user with empty identities if email already exists
+      if (signUpData.user.identities && signUpData.user.identities.length === 0) {
+        return { success: false, error: 'A user with this email already exists' };
+      }
+
+      // Step 2: Insert profile using the admin's session (RLS "Admins can insert users" policy)
+      const { error: profileError } = await supabase.from('users').insert([{
+        id: signUpData.user.id,
+        email: input.email,
+        full_name: input.full_name,
+        role: input.role,
+        is_active: true,
+      }]);
+
+      if (profileError) {
+        console.error('create-user: profile insert failed', profileError);
+        return { success: false, error: profileError.message };
       }
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'Failed to create user' };
+      console.error('create-user: unexpected error', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to create user' };
     }
   },
 

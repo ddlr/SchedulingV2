@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { userManagementService } from '../services/userManagementService';
 import { demoRequestService, DemoRequest } from '../services/demoRequestService';
 import { User } from '../services/authService';
+import { supabase } from '../lib/supabase';
 import { PlusIcon } from './icons/PlusIcon';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
@@ -20,12 +21,10 @@ const UserManagementPanel: React.FC = () => {
     full_name: '',
     role: 'staff' as 'admin' | 'staff' | 'viewer',
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [usersData, requestsData] = await Promise.all([
       userManagementService.getAllUsers(),
@@ -34,7 +33,23 @@ const UserManagementPanel: React.FC = () => {
     setUsers(usersData);
     setDemoRequests(requestsData);
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+
+    // Subscribe to realtime changes on users table so the list stays in sync
+    const channel = supabase
+      .channel('admin_users_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadData]);
 
   const handleOpenCreateModal = () => {
     setEditingUser(null);
@@ -44,6 +59,7 @@ const UserManagementPanel: React.FC = () => {
       full_name: '',
       role: 'staff',
     });
+    setFormError(null);
     setShowUserModal(true);
   };
 
@@ -55,6 +71,7 @@ const UserManagementPanel: React.FC = () => {
       full_name: user.full_name,
       role: user.role,
     });
+    setFormError(null);
     setShowUserModal(true);
   };
 
@@ -71,38 +88,45 @@ const UserManagementPanel: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    setSubmitting(true);
 
-    if (editingUser) {
-      const result = await userManagementService.updateUser(editingUser.id, {
-        full_name: formData.full_name,
-        role: formData.role,
-      });
+    try {
+      if (editingUser) {
+        const result = await userManagementService.updateUser(editingUser.id, {
+          full_name: formData.full_name,
+          role: formData.role,
+        });
 
-      if (result.success) {
-        await loadData();
-        handleCloseModal();
+        if (result.success) {
+          await loadData();
+          handleCloseModal();
+        } else {
+          setFormError(result.error || 'Failed to update user');
+        }
       } else {
-        alert(result.error || 'Failed to update user');
-      }
-    } else {
-      if (!formData.password) {
-        alert('Password is required for new users');
-        return;
-      }
+        if (!formData.password) {
+          setFormError('Password is required for new users');
+          setSubmitting(false);
+          return;
+        }
 
-      const result = await userManagementService.createUser({
-        email: formData.email,
-        password: formData.password,
-        full_name: formData.full_name,
-        role: formData.role,
-      });
+        const result = await userManagementService.createUser({
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.full_name,
+          role: formData.role,
+        });
 
-      if (result.success) {
-        await loadData();
-        handleCloseModal();
-      } else {
-        alert(result.error || 'Failed to create user');
+        if (result.success) {
+          await loadData();
+          handleCloseModal();
+        } else {
+          setFormError(result.error || 'Failed to create user');
+        }
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -362,19 +386,27 @@ const UserManagementPanel: React.FC = () => {
                 </select>
               </div>
 
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {formError}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                  {editingUser ? 'Update' : 'Create'}
+                  {submitting ? 'Saving...' : editingUser ? 'Update' : 'Create'}
                 </button>
               </div>
             </form>

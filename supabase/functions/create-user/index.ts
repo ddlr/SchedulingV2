@@ -88,12 +88,46 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: authData, error: signUpError } =
-      await adminClient.auth.admin.createUser({
+    // Helper to create auth user, handling orphaned users from previous failed attempts
+    const createAuthUser = async () => {
+      const result = await adminClient.auth.admin.createUser({
         email: payload.email,
         password: payload.password,
         email_confirm: true,
       });
+
+      if (result.error?.message?.includes("already been registered")) {
+        // Check if profile exists — if not, this is an orphaned auth user from a prior failure
+        const { data: existingProfile } = await adminClient
+          .from("users")
+          .select("id")
+          .eq("email", payload.email)
+          .maybeSingle();
+
+        if (existingProfile) {
+          // User genuinely exists in both tables
+          return { data: null, error: { message: "A user with this email already exists" } };
+        }
+
+        // Orphaned auth user — clean up and retry
+        const { data: { users: authUsers } } = await adminClient.auth.admin.listUsers();
+        const orphan = (authUsers || []).find((u: { email?: string }) => u.email === payload.email);
+        if (orphan) {
+          await adminClient.auth.admin.deleteUser(orphan.id);
+          return adminClient.auth.admin.createUser({
+            email: payload.email,
+            password: payload.password,
+            email_confirm: true,
+          });
+        }
+
+        return result;
+      }
+
+      return result;
+    };
+
+    const { data: authData, error: signUpError } = await createAuthUser();
 
     if (signUpError) {
       return new Response(JSON.stringify({ error: signUpError.message }), {
@@ -102,7 +136,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (!authData.user) {
+    if (!authData?.user) {
       return new Response(
         JSON.stringify({ error: "Failed to create auth user" }),
         {
@@ -114,6 +148,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: profileError } = await adminClient.from("users").insert([
       {
+        id: authData.user.id,
         email: payload.email,
         full_name: payload.full_name,
         role: payload.role,
@@ -122,6 +157,8 @@ Deno.serve(async (req: Request) => {
     ]);
 
     if (profileError) {
+      // Clean up the auth user so we don't leave an orphan
+      await adminClient.auth.admin.deleteUser(authData.user.id);
       return new Response(JSON.stringify({ error: profileError.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

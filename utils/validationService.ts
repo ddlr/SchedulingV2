@@ -1,6 +1,6 @@
 
 import { ScheduleEntry, GeneratedSchedule, Client, Therapist, DayOfWeek, ValidationError, Callout, InsuranceQualification } from '../types';
-import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK } from '../constants'; // Use constants
+import { COMPANY_OPERATING_HOURS_START, COMPANY_OPERATING_HOURS_END, STAFF_ASSUMED_AVAILABILITY_START, STAFF_ASSUMED_AVAILABILITY_END, LUNCH_COVERAGE_START_TIME, LUNCH_COVERAGE_END_TIME, ALL_THERAPIST_ROLES, DEFAULT_ROLE_RANK, getMaxSessionsPerTherapist } from '../constants'; // Use constants
 
 export const timeToMinutes = (time: string): number => {
   if (!time) return 0;
@@ -84,6 +84,49 @@ const isPseudoSplitSession = (
   return isAtStart || isAtEnd;
 };
 
+const isLunchHandoffSession = (
+  entry: ScheduleEntry,
+  currentSchedule: GeneratedSchedule,
+  originalEntryForEditId?: string | null
+): boolean => {
+  if (entry.sessionType !== 'ABA' || !entry.clientId || !entry.therapistId) return false;
+
+  const entryStart = timeToMinutes(entry.startTime);
+  const entryEnd = timeToMinutes(entry.endTime);
+  const duration = entryEnd - entryStart;
+
+  // Handoff sessions cover lunch gaps — max 60 min (lunch + small buffer)
+  if (duration > 60) return false;
+
+  // Check if another therapist assigned to this client has a lunch overlapping this session
+  const otherTherapistLunch = currentSchedule.find(s =>
+    s.sessionType === 'IndirectTime' &&
+    s.therapistId !== entry.therapistId &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+  if (!otherTherapistLunch) return false;
+
+  const lunchStart = timeToMinutes(otherTherapistLunch.startTime);
+  const lunchEnd = timeToMinutes(otherTherapistLunch.endTime);
+
+  // The handoff session must overlap with the other therapist's lunch
+  if (entryStart >= lunchEnd || entryEnd <= lunchStart) return false;
+
+  // The other therapist must have an ABA session with this client on this day
+  const otherHasClient = currentSchedule.some(s =>
+    s.therapistId === otherTherapistLunch.therapistId &&
+    s.clientId === entry.clientId &&
+    s.sessionType === 'ABA' &&
+    s.day === entry.day &&
+    s.id !== entry.id &&
+    (!originalEntryForEditId || s.id !== originalEntryForEditId)
+  );
+
+  return otherHasClient;
+};
+
 export const validateSessionEntry = (
   entryToValidate: ScheduleEntry,
   currentSchedule: GeneratedSchedule,
@@ -108,9 +151,10 @@ export const validateSessionEntry = (
   }
 
   const therapistData = therapistId ? therapists.find(t => t.id === therapistId) : null;
-  if (!therapistId) {
+  const isAlliedHealth = sessionType === 'AlliedHealth_OT' || sessionType === 'AlliedHealth_SLP';
+  if (!therapistId && !isAlliedHealth) {
     errors.push({ ruleId: "UNASSIGNED_SESSION", message: `Session for ${clientName || 'N/A'} is not assigned to a staff member.` });
-  } else if (!therapistData) {
+  } else if (therapistId && !therapistData) {
      errors.push({ ruleId: "THERAPIST_NOT_FOUND", message: `Therapist "${therapistName}" (ID: ${therapistId}) not found.`});
   } else if (therapistData) {
     if (startTimeMinutes < timeToMinutes(STAFF_ASSUMED_AVAILABILITY_START) ||
@@ -215,7 +259,8 @@ export const validateSessionEntry = (
             const qual = insuranceQualifications.find(q => q.id === reqId);
             if (qual) {
               if (qual.minSessionDurationMinutes && duration < qual.minSessionDurationMinutes
-                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+                  && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)
+                  && !isLunchHandoffSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
                 errors.push({
                     ruleId: "MIN_DURATION_VIOLATED",
                     message: `Session for ${clientName} is ${duration} mins, but ${reqId} requires at least ${qual.minSessionDurationMinutes} mins.`,
@@ -248,7 +293,7 @@ export const validateSessionEntry = (
 
   const duration = endTimeMinutes - startTimeMinutes;
   if (sessionType === 'ABA') {
-    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
+    if (duration < 60 && !isPseudoSplitSession(entryToValidate, currentSchedule, originalEntryForEditId) && !isLunchHandoffSession(entryToValidate, currentSchedule, originalEntryForEditId)) {
       errors.push({ ruleId: "ABA_DURATION_TOO_SHORT", message: "ABA session must be at least 60 minutes." });
     }
 
@@ -375,10 +420,13 @@ export const validateFullSchedule = (
     const therapistSessions = scheduleToValidate.filter(s => s.therapistId === therapistId && s.day === currentDayOfWeekString);
     
     const billableSessions = therapistSessions.filter(s => s.sessionType === 'ABA' || s.sessionType === 'AlliedHealth_OT' || s.sessionType === 'AlliedHealth_SLP');
-    if (billableSessions.length > 4) {
+    const isSlpOrOt = therapist.role === 'SLP' || therapist.role === 'OT';
+    const maxNotes = getMaxSessionsPerTherapist();
+    const noteThreshold = maxNotes > 0 ? maxNotes : 4;
+    if (!isSlpOrOt && billableSessions.length > noteThreshold) {
       allErrors.push({
         ruleId: "MAX_NOTES_EXCEEDED",
-        message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), which is high.`
+        message: `Therapist ${therapist.name} has ${billableSessions.length} billable sessions (notes), exceeding the limit of ${noteThreshold}.`
       });
     }
 

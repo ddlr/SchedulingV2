@@ -17,7 +17,7 @@ export interface Team {
 
 export type AlliedHealthServiceType = 'OT' | 'SLP';
 export type SessionType = 'ABA' | 'AlliedHealth_OT' | 'AlliedHealth_SLP' | 'IndirectTime' | 'AdminTime';
-export type TherapistRole = "BCBA" | "CF" | "STAR 3" | "STAR 2" | "STAR 1" | "RBT" | "BT" | "OT" | "SLP" | "Other";
+export type TherapistRole = string;
 
 
 export interface AlliedHealthNeed {
@@ -112,6 +112,9 @@ export interface ScheduleViewProps {
   onMoveScheduleEntry: (draggedEntryId: string, newTherapistId: string, newStartTime: string) => void;
   onOpenEditSessionModal: (entry: ScheduleEntry) => void;
   onOpenAddSessionModal: (therapistId: string, therapistName: string, startTime: string, day: DayOfWeek) => void;
+  highlightedClientIds?: string[];
+  highlightedTherapistIds?: string[];
+  highlightedTeamIds?: string[];
 }
 
 export interface ValidationError {
