@@ -1,6 +1,6 @@
 import { Callout } from '../types';
 import { supabase } from '../lib/supabase';
-import { getCurrentOrgId } from './orgHelper';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 let _callouts: Callout[] = [];
 let _initialized = false;
@@ -46,7 +46,8 @@ const setupRealtimeSubscription = () => {
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel);
   }
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
   _realtimeChannel = supabase
     .channel('callouts_changes')
     .on('postgres_changes', {

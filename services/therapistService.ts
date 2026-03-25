@@ -1,6 +1,6 @@
 import { Therapist } from '../types';
 import { supabase } from '../lib/supabase';
-import { getCurrentOrgId } from './orgHelper';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 let _therapists: Therapist[] = [];
 let _initialized = false;
@@ -41,7 +41,8 @@ const setupRealtimeSubscription = () => {
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel);
   }
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
   _realtimeChannel = supabase
     .channel('therapists_changes')
     .on('postgres_changes', {
@@ -152,7 +153,8 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<The
   let addedCount = 0;
   let updatedCount = 0;
   const errors: string[] = [];
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return { addedCount: 0, updatedCount: 0, errors: ['Organization not set'] };
 
   for (const therapistData of therapistsToProcess) {
     if (!therapistData.name) continue;

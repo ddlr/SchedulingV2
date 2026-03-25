@@ -1,6 +1,6 @@
 import { BaseScheduleConfig, GeneratedSchedule } from '../types';
 import { supabase } from '../lib/supabase';
-import { getCurrentOrgId } from './orgHelper';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 const generateScheduleEntryId = () => `schedEntry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -47,7 +47,8 @@ const setupRealtimeSubscription = () => {
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel);
   }
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
   _realtimeChannel = supabase
     .channel('base_schedules_changes')
     .on('postgres_changes', {

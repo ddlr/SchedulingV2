@@ -45,6 +45,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
     return <Navigate to="/app" replace />;
   }
 
+  // Redirect super_admin to dashboard if they navigate to a non-super-admin route without an org
+  if (!requireSuperAdmin && user?.role === 'super_admin' && !user?.organization_id) {
+    return <Navigate to="/super-admin" replace />;
+  }
+
   return <>{children}</>;
 };
 

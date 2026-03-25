@@ -1,7 +1,7 @@
 import { Client } from '../types';
 import { supabase } from '../lib/supabase';
 import { getNextAvailableColor } from '../utils/colorUtils';
-import { getCurrentOrgId } from './orgHelper';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 let _clients: Client[] = [];
 let _initialized = false;
@@ -43,7 +43,8 @@ const setupRealtimeSubscription = () => {
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel);
   }
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
   _realtimeChannel = supabase
     .channel('clients_changes')
     .on('postgres_changes', {
@@ -160,7 +161,8 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
   let updatedCount = 0;
   const errors: string[] = [];
   const batchUsedColors: string[] = [];
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return { addedCount: 0, updatedCount: 0, errors: ['Organization not set'] };
 
   for (const clientData of clientsToProcess) {
     if (!clientData.name) continue;

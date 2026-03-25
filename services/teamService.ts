@@ -1,6 +1,6 @@
 import { Team } from '../types';
 import { supabase } from '../lib/supabase';
-import { getCurrentOrgId } from './orgHelper';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 let _teams: Team[] = [];
 let _initialized = false;
@@ -39,7 +39,8 @@ const setupRealtimeSubscription = () => {
   if (_realtimeChannel) {
     supabase.removeChannel(_realtimeChannel);
   }
-  const orgId = getCurrentOrgId();
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
   _realtimeChannel = supabase
     .channel('teams_changes')
     .on('postgres_changes', {
