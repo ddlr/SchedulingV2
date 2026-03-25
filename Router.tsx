@@ -5,6 +5,7 @@ import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppWrapper from './AppWrapper';
+import SuperAdminDashboard from './components/SuperAdminDashboard';
 
 const Router: React.FC = () => {
   return (
@@ -18,6 +19,14 @@ const Router: React.FC = () => {
             element={
               <ProtectedRoute>
                 <AppWrapper />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/super-admin"
+            element={
+              <ProtectedRoute requireSuperAdmin>
+                <SuperAdminDashboard />
               </ProtectedRoute>
             }
           />

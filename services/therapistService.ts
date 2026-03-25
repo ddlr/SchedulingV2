@@ -1,7 +1,10 @@
 import { Therapist } from '../types';
 import { supabase } from '../lib/supabase';
+import { getCurrentOrgId } from './orgHelper';
 
 let _therapists: Therapist[] = [];
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(therapists: Therapist[]) => void> = [];
 
 const notifyListeners = () => {
@@ -10,9 +13,11 @@ const notifyListeners = () => {
 
 const loadTherapists = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('therapists')
       .select('*')
+      .eq('organization_id', orgId)
       .order('name');
 
     if (error) throw error;
@@ -32,18 +37,37 @@ const loadTherapists = async () => {
   }
 };
 
-loadTherapists();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  const orgId = getCurrentOrgId();
+  _realtimeChannel = supabase
     .channel('therapists_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'therapists' }, () => {
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'therapists',
+      filter: `organization_id=eq.${orgId}`
+    }, () => {
       loadTherapists();
     })
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadTherapists();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeTherapists = () => {
+  _initialized = false;
+  _therapists = [];
+  ensureInitialized();
+};
 
 export const getTherapists = (): Therapist[] => {
   return [..._therapists];
@@ -51,6 +75,7 @@ export const getTherapists = (): Therapist[] => {
 
 export const addTherapist = async (newTherapistData: Omit<Therapist, 'id'>): Promise<Therapist> => {
   try {
+    const orgId = getCurrentOrgId();
     const newId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('therapists')
@@ -59,7 +84,8 @@ export const addTherapist = async (newTherapistData: Omit<Therapist, 'id'>): Pro
         name: newTherapistData.name,
         role: newTherapistData.role,
         team_id: newTherapistData.teamId || null,
-        qualifications: newTherapistData.qualifications || []
+        qualifications: newTherapistData.qualifications || [],
+        organization_id: orgId
       })
       .select()
       .single();
@@ -126,6 +152,7 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<The
   let addedCount = 0;
   let updatedCount = 0;
   const errors: string[] = [];
+  const orgId = getCurrentOrgId();
 
   for (const therapistData of therapistsToProcess) {
     if (!therapistData.name) continue;
@@ -134,6 +161,7 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<The
       const { data: existing, error: findError } = await supabase
         .from('therapists')
         .select('id')
+        .eq('organization_id', orgId)
         .ilike('name', therapistData.name)
         .maybeSingle();
 
@@ -160,7 +188,8 @@ export const addOrUpdateBulkTherapists = async (therapistsToProcess: Partial<The
             name: therapistData.name,
             role: therapistData.role || "BT",
             team_id: therapistData.teamId || null,
-            qualifications: therapistData.qualifications || []
+            qualifications: therapistData.qualifications || [],
+            organization_id: orgId
           });
 
         if (insertError) throw insertError;
@@ -200,8 +229,8 @@ export const removeTherapistsByNames = async (therapistNamesToRemove: string[]):
 
 export const subscribeToTherapists = (listener: (therapists: Therapist[]) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener([..._therapists]);
-  // Re-fetch in case the initial module-level load ran before auth was ready
   loadTherapists();
 
   return () => {

@@ -7,9 +7,10 @@ import LoadingSpinner from './LoadingSpinner';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireSuperAdmin?: boolean;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin = false }) => {
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin = false, requireSuperAdmin = false }) => {
   const { isAuthenticated, loading, user } = useAuth();
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -36,7 +37,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
     return <Navigate to="/login" replace />;
   }
 
-  if (requireAdmin && user?.role !== 'admin') {
+  if (requireSuperAdmin && user?.role !== 'super_admin') {
+    return <Navigate to="/app" replace />;
+  }
+
+  if (requireAdmin && user?.role !== 'admin' && user?.role !== 'super_admin') {
     return <Navigate to="/app" replace />;
   }
 

@@ -1,12 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { User } from './authService';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 export interface CreateUserInput {
   email: string;
   password: string;
   full_name: string;
   role: 'admin' | 'staff' | 'viewer';
+  organization_id?: string;
 }
 
 export interface UpdateUserInput {
@@ -18,11 +20,18 @@ export interface UpdateUserInput {
 export const userManagementService = {
   async getAllUsers(): Promise<User[]> {
     try {
-      const { data, error } = await supabase
+      const orgId = getCurrentOrgIdOrNull();
+      let query = supabase
         .from('users')
         .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false });
+
+      if (orgId) {
+        query = query.eq('organization_id', orgId);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw error;
@@ -35,16 +44,34 @@ export const userManagementService = {
     }
   },
 
+  async getOrgUsers(orgId: string): Promise<User[]> {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('organization_id', orgId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching org users:', error);
+      return [];
+    }
+  },
+
   async createUser(input: CreateUserInput): Promise<{ success: boolean; error?: string }> {
     try {
-      // Use a separate client for signUp so the admin's session is not affected
       const signUpClient = createClient(
         import.meta.env.VITE_SUPABASE_URL,
         import.meta.env.VITE_SUPABASE_ANON_KEY,
         { auth: { persistSession: false, autoRefreshToken: false } }
       );
 
-      // Step 1: Create auth user via signUp
       const { data: signUpData, error: signUpError } = await signUpClient.auth.signUp({
         email: input.email,
         password: input.password,
@@ -59,18 +86,19 @@ export const userManagementService = {
         return { success: false, error: 'Failed to create auth user' };
       }
 
-      // Supabase returns user with empty identities if email already exists
       if (signUpData.user.identities && signUpData.user.identities.length === 0) {
         return { success: false, error: 'A user with this email already exists' };
       }
 
-      // Step 2: Insert profile using the admin's session (RLS "Admins can insert users" policy)
+      const orgId = input.organization_id || getCurrentOrgId();
+
       const { error: profileError } = await supabase.from('users').insert([{
         id: signUpData.user.id,
         email: input.email,
         full_name: input.full_name,
         role: input.role,
         is_active: true,
+        organization_id: orgId,
       }]);
 
       if (profileError) {

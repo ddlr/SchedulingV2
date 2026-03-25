@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { GeneratedSchedule, DayOfWeek } from '../types';
+import { getCurrentOrgId } from './orgHelper';
 
 export interface DailySchedule {
   id: string;
@@ -15,9 +16,11 @@ export interface DailySchedule {
 export const dailyScheduleService = {
   async getDailySchedule(date: string): Promise<DailySchedule | null> {
     try {
+      const orgId = getCurrentOrgId();
       const { data, error } = await supabase
         .from('daily_schedules')
         .select('*')
+        .eq('organization_id', orgId)
         .eq('schedule_date', date)
         .maybeSingle();
 
@@ -41,7 +44,8 @@ export const dailyScheduleService = {
     errors: any[] = []
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const id = `ds-${date}`;
+      const orgId = getCurrentOrgId();
+      const id = `ds-${orgId}-${date}`;
       const { error } = await supabase
         .from('daily_schedules')
         .upsert({
@@ -51,8 +55,9 @@ export const dailyScheduleService = {
           schedule_data: schedule,
           generated_by: userEmail,
           validation_errors: errors,
+          organization_id: orgId,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'schedule_date' });
+        }, { onConflict: 'organization_id,schedule_date' });
 
       if (error) {
         console.error('Error saving daily schedule:', error);

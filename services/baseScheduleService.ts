@@ -1,9 +1,12 @@
 import { BaseScheduleConfig, GeneratedSchedule } from '../types';
 import { supabase } from '../lib/supabase';
+import { getCurrentOrgId } from './orgHelper';
 
 const generateScheduleEntryId = () => `schedEntry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 let _baseSchedules: BaseScheduleConfig[] = [];
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(schedules: BaseScheduleConfig[]) => void> = [];
 
 const ensureEntryIds = (schedule: GeneratedSchedule | null): GeneratedSchedule | null => {
@@ -17,9 +20,11 @@ const notifyListeners = () => {
 
 const loadBaseSchedules = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('base_schedules')
       .select('*')
+      .eq('organization_id', orgId)
       .order('name');
 
     if (error) throw error;
@@ -38,18 +43,37 @@ const loadBaseSchedules = async () => {
   }
 };
 
-loadBaseSchedules();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  const orgId = getCurrentOrgId();
+  _realtimeChannel = supabase
     .channel('base_schedules_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'base_schedules' }, () => {
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'base_schedules',
+      filter: `organization_id=eq.${orgId}`
+    }, () => {
       loadBaseSchedules();
     })
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadBaseSchedules();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeBaseSchedules = () => {
+  _initialized = false;
+  _baseSchedules = [];
+  ensureInitialized();
+};
 
 export const getBaseSchedules = (): BaseScheduleConfig[] => {
   return [..._baseSchedules.map(bs => ({ ...bs, schedule: ensureEntryIds(bs.schedule) }))];
@@ -57,6 +81,7 @@ export const getBaseSchedules = (): BaseScheduleConfig[] => {
 
 export const updateBaseSchedules = async (updatedSchedules: BaseScheduleConfig[]): Promise<BaseScheduleConfig[]> => {
   try {
+    const orgId = getCurrentOrgId();
     const existingIds = _baseSchedules.map(bs => bs.id);
     const updatedIds = updatedSchedules.map(bs => bs.id);
 
@@ -85,7 +110,8 @@ export const updateBaseSchedules = async (updatedSchedules: BaseScheduleConfig[]
             id: schedule.id,
             name: schedule.name,
             applies_to_days: schedule.appliesToDays,
-            schedule: scheduleWithIds
+            schedule: scheduleWithIds,
+            organization_id: orgId
           });
       }
     }
@@ -100,8 +126,8 @@ export const updateBaseSchedules = async (updatedSchedules: BaseScheduleConfig[]
 
 export const subscribeToBaseSchedules = (listener: (schedules: BaseScheduleConfig[]) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener([..._baseSchedules.map(bs => ({ ...bs, schedule: ensureEntryIds(bs.schedule) }))]);
-  // Re-fetch in case the initial module-level load ran before auth was ready
   loadBaseSchedules();
 
   return () => {

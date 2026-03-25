@@ -1,8 +1,11 @@
 import { Client } from '../types';
 import { supabase } from '../lib/supabase';
 import { getNextAvailableColor } from '../utils/colorUtils';
+import { getCurrentOrgId } from './orgHelper';
 
 let _clients: Client[] = [];
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(clients: Client[]) => void> = [];
 
 const notifyListeners = () => {
@@ -11,9 +14,11 @@ const notifyListeners = () => {
 
 const loadClients = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('clients')
       .select('*')
+      .eq('organization_id', orgId)
       .order('name');
 
     if (error) throw error;
@@ -34,18 +39,37 @@ const loadClients = async () => {
   }
 };
 
-loadClients();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  const orgId = getCurrentOrgId();
+  _realtimeChannel = supabase
     .channel('clients_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'clients',
+      filter: `organization_id=eq.${orgId}`
+    }, () => {
       loadClients();
     })
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadClients();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeClients = () => {
+  _initialized = false;
+  _clients = [];
+  ensureInitialized();
+};
 
 export const getClients = (): Client[] => {
   return [..._clients];
@@ -53,6 +77,7 @@ export const getClients = (): Client[] => {
 
 export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Client> => {
   try {
+    const orgId = getCurrentOrgId();
     const newId = crypto.randomUUID();
     const usedColors = _clients.map(c => c.color).filter((c): c is string => !!c);
     const assignedColor = newClientData.color || getNextAvailableColor(usedColors);
@@ -64,7 +89,8 @@ export const addClient = async (newClientData: Omit<Client, 'id'>): Promise<Clie
         team_id: newClientData.teamId || null,
         color: assignedColor,
         insurance_requirements: newClientData.insuranceRequirements || [],
-        allied_health_needs: newClientData.alliedHealthNeeds || []
+        allied_health_needs: newClientData.alliedHealthNeeds || [],
+        organization_id: orgId
       })
       .select()
       .single();
@@ -134,6 +160,7 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
   let updatedCount = 0;
   const errors: string[] = [];
   const batchUsedColors: string[] = [];
+  const orgId = getCurrentOrgId();
 
   for (const clientData of clientsToProcess) {
     if (!clientData.name) continue;
@@ -142,6 +169,7 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
       const { data: existing, error: findError } = await supabase
         .from('clients')
         .select('id')
+        .eq('organization_id', orgId)
         .ilike('name', clientData.name)
         .maybeSingle();
 
@@ -175,7 +203,8 @@ export const addOrUpdateBulkClients = async (clientsToProcess: Partial<Client>[]
             team_id: clientData.teamId || null,
             color: assignedColor,
             insurance_requirements: clientData.insuranceRequirements || [],
-            allied_health_needs: clientData.alliedHealthNeeds || []
+            allied_health_needs: clientData.alliedHealthNeeds || [],
+            organization_id: orgId
           });
 
         if (insertError) throw insertError;
@@ -216,8 +245,8 @@ export const removeClientsByNames = async (clientNamesToRemove: string[]): Promi
 
 export const subscribeToClients = (listener: (clients: Client[]) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener([..._clients]);
-  // Re-fetch in case the initial module-level load ran before auth was ready
   loadClients();
 
   return () => {

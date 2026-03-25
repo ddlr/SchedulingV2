@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { DayOfWeek, TherapistRole } from '../types';
+import { getCurrentOrgId } from './orgHelper';
 
 export interface SystemConfig {
   companyOperatingHoursStart: string;
@@ -73,6 +74,8 @@ const DEFAULT_CONFIG: SystemConfig = {
 };
 
 let _config: SystemConfig = { ...DEFAULT_CONFIG };
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(config: SystemConfig) => void> = [];
 
 const notifyListeners = () => {
@@ -81,9 +84,11 @@ const notifyListeners = () => {
 
 const loadConfig = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('system_config')
       .select('*')
+      .eq('organization_id', orgId)
       .maybeSingle();
 
     if (error) throw error;
@@ -95,8 +100,9 @@ const loadConfig = async () => {
       await supabase
         .from('system_config')
         .insert({
-          id: 'default',
-          config_data: _config
+          id: crypto.randomUUID(),
+          config_data: _config,
+          organization_id: orgId
         });
     }
 
@@ -107,10 +113,11 @@ const loadConfig = async () => {
   }
 };
 
-loadConfig();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  _realtimeChannel = supabase
     .channel('system_config_changes')
     .on('postgres_changes', {
       event: '*',
@@ -122,7 +129,19 @@ const setupRealtimeSubscription = () => {
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadConfig();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeSystemConfig = () => {
+  _initialized = false;
+  _config = { ...DEFAULT_CONFIG };
+  ensureInitialized();
+};
 
 export const getSystemConfig = (): SystemConfig => {
   return { ..._config };
@@ -130,13 +149,23 @@ export const getSystemConfig = (): SystemConfig => {
 
 export const updateSystemConfig = async (updatedConfig: Partial<SystemConfig>): Promise<SystemConfig> => {
   try {
+    const orgId = getCurrentOrgId();
     const newConfig = { ..._config, ...updatedConfig };
+
+    const { data: existing } = await supabase
+      .from('system_config')
+      .select('id')
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
+    const configId = existing?.id || crypto.randomUUID();
 
     const { error } = await supabase
       .from('system_config')
       .upsert({
-        id: 'default',
+        id: configId,
         config_data: newConfig,
+        organization_id: orgId,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'id'
@@ -154,6 +183,7 @@ export const updateSystemConfig = async (updatedConfig: Partial<SystemConfig>): 
 
 export const subscribeToSystemConfig = (listener: (config: SystemConfig) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener({ ..._config });
 
   return () => {

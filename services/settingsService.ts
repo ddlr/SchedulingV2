@@ -1,7 +1,10 @@
 import { supabase } from '../lib/supabase';
 import { InsuranceQualification } from '../types';
+import { getCurrentOrgId } from './orgHelper';
 
 let _qualifications: InsuranceQualification[] = [];
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(qualifications: InsuranceQualification[]) => void> = [];
 const SETTINGS_KEY = 'insurance_qualifications';
 
@@ -11,9 +14,11 @@ const notifyListeners = () => {
 
 const loadQualifications = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('settings')
       .select('value')
+      .eq('organization_id', orgId)
       .eq('key', SETTINGS_KEY)
       .maybeSingle();
 
@@ -21,7 +26,6 @@ const loadQualifications = async () => {
 
     if (data && data.value) {
       const rawValue = Array.isArray(data.value) ? data.value : [];
-      // Migration: Convert string array to InsuranceQualification objects
       _qualifications = rawValue.map((item: any) => {
         if (typeof item === 'string') {
           return {
@@ -38,11 +42,13 @@ const loadQualifications = async () => {
         { id: 'MD_MEDICAID', maxTherapistsPerDay: 3 },
         { id: 'RBT' }
       ];
+      const orgId = getCurrentOrgId();
       await supabase
         .from('settings')
         .insert({
           key: SETTINGS_KEY,
-          value: _qualifications
+          value: _qualifications,
+          organization_id: orgId
         });
     }
 
@@ -54,10 +60,11 @@ const loadQualifications = async () => {
   }
 };
 
-loadQualifications();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  _realtimeChannel = supabase
     .channel('settings_changes')
     .on('postgres_changes', {
       event: '*',
@@ -70,7 +77,19 @@ const setupRealtimeSubscription = () => {
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadQualifications();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeSettings = () => {
+  _initialized = false;
+  _qualifications = [];
+  ensureInitialized();
+};
 
 export const getInsuranceQualifications = (): InsuranceQualification[] => {
   return [..._qualifications];
@@ -78,6 +97,7 @@ export const getInsuranceQualifications = (): InsuranceQualification[] => {
 
 export const updateInsuranceQualifications = async (updatedQualifications: InsuranceQualification[]): Promise<InsuranceQualification[]> => {
   try {
+    const orgId = getCurrentOrgId();
     const sortedQualifications = [...updatedQualifications].sort((a, b) => a.id.localeCompare(b.id));
 
     const { error } = await supabase
@@ -85,9 +105,10 @@ export const updateInsuranceQualifications = async (updatedQualifications: Insur
       .upsert({
         key: SETTINGS_KEY,
         value: sortedQualifications,
+        organization_id: orgId,
         updated_at: new Date().toISOString()
       }, {
-        onConflict: 'key'
+        onConflict: 'organization_id,key'
       });
 
     if (error) throw error;
@@ -102,8 +123,8 @@ export const updateInsuranceQualifications = async (updatedQualifications: Insur
 
 export const subscribeToInsuranceQualifications = (listener: (qualifications: InsuranceQualification[]) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener([..._qualifications]);
-  // Re-fetch in case the initial module-level load ran before auth was ready
   loadQualifications();
 
   return () => {

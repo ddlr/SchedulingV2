@@ -4,8 +4,9 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'staff' | 'viewer';
+  role: 'super_admin' | 'admin' | 'staff' | 'viewer';
   is_active: boolean;
+  organization_id: string | null;
 }
 
 export interface AuthResponse {
