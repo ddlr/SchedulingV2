@@ -223,7 +223,7 @@ const LandingPage: React.FC = () => {
             <div>
               <h3 className="text-2xl font-bold text-white mb-4">The Problem</h3>
               <p className="text-white/80 leading-relaxed text-lg">
-                Schedulers spend 10-20 hours per week manually adjusting schedules. A single cancellation
+                Schedulers spend <b>10-20 hours per week</b> manually adjusting schedules. A single cancellation
                 can trigger cascading conflicts.
               </p>
             </div>
