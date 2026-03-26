@@ -61,7 +61,7 @@ const LandingPage: React.FC = () => {
                 Meet Ordus ABA
               </h2>
               <h3 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
-                Intelligent Workforce Optimization for ABA Therapy Clinics
+                Stop Wrestling with Schedules. Start Optimizing Care.
               </h3>
             </div>
             {/* iMac Mockup */}
