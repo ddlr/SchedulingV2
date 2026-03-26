@@ -228,16 +228,16 @@ const LandingPage: React.FC = () => {
               </p>
             </div>
             <div>
-              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Result</h3>
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">Ordus Solution</h3>
               <p className="text-white/80 leading-relaxed text-lg">
-                Reduce administrative overhead by 80%, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
+                Ordus' proprietary algorithm generates valid daily schedules in seconds, dynamically
+                recalculating when changes occur.
               </p>
             </div>
             <div>
-              <h3 className="text-2xl font-bold text-yellow-400 mb-4">Ordus Solution</h3>
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Result</h3>
               <p className="text-white/80 leading-relaxed text-lg">
-                Flow's proprietary algorithm generates valid daily schedules in seconds, dynamically
-                recalculating when changes occur.
+                Reduce administrative overhead by 80%, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
               </p>
             </div>
           </div>
