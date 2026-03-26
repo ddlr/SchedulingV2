@@ -143,7 +143,7 @@ const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-6">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Optimization Powered by Real-World ABA Constraints
+              Built for the Real-World Chaos of ABA Clinics
             </h2>
             <p className="text-lg text-white/80 max-w-4xl mx-auto">
               Ordus evaluates thousands of schedule combinations to deliver clinically valid, compliant, and staff
