@@ -211,7 +211,7 @@ const LandingPage: React.FC = () => {
           <div className="text-center mb-16">
             <div className="inline-block relative">
               <h2 className="text-4xl sm:text-5xl font-bold italic text-white">
-                Operational Efficiency
+                Put Scheduling on Autopilot
               </h2>
               {/* Decorative underline */}
               <svg className="absolute -bottom-3 left-0 w-full" viewBox="0 0 400 12" fill="none">
@@ -228,10 +228,9 @@ const LandingPage: React.FC = () => {
               </p>
             </div>
             <div>
-              <h3 className="text-2xl font-bold text-yellow-400 mb-4">Ordus Solution</h3>
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Result</h3>
               <p className="text-white/80 leading-relaxed text-lg">
-                Flow's proprietary algorithm generates valid daily schedules in seconds, dynamically
-                recalculating when changes occur.
+                Reduce administrative overhead by 80%, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
               </p>
             </div>
             <div>
