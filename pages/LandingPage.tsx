@@ -196,7 +196,7 @@ const LandingPage: React.FC = () => {
             <div key={set} className="flex items-center">
               <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Turn hours of scheduling into minutes</span>
               <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Schedules your therapists won't hate</span>
+              <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Schedules your therapists will actually love.</span>
               <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
               <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Stop denied claims before they happen</span>
               <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
