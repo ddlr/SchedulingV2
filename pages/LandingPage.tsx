@@ -70,47 +70,47 @@ const LandingPage: React.FC = () => {
             </div>
             {/* iMac Mockup */}
             <div className="flex justify-center">
-              <div className="w-full max-w-lg">
-                {/* Screen */}
-                <div className="bg-slate-900 rounded-t-xl border-4 border-slate-700 p-2 shadow-2xl">
-                  <div className="bg-slate-800 rounded p-2">
+              <div className="w-full max-w-xl">
+                {/* Screen bezel */}
+                <div className="bg-slate-900 rounded-t-2xl border-[6px] border-slate-700 p-3 shadow-2xl">
+                  <div className="bg-slate-800 rounded-lg p-3">
                     {/* Top bar */}
-                    <div className="flex items-center justify-between mb-2 px-2">
+                    <div className="flex items-center justify-between mb-3 px-2">
                       <div className="flex items-center gap-2">
-                        <SparklesIcon className="w-3 h-3 text-blue-400" />
-                        <span className="text-[8px] text-white font-medium">Ordus ABA</span>
+                        <SparklesIcon className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-[9px] text-white font-semibold">Ordus ABA</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[7px] text-slate-400">SCHEDULER</span>
-                        <span className="text-[7px] text-slate-500">02/03 2025</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[8px] text-slate-400 font-medium tracking-wide">SCHEDULER</span>
+                        <span className="text-[8px] text-slate-500">02/03 2025</span>
                       </div>
-                      <div className="flex gap-1">
-                        <span className="px-1.5 py-0.5 bg-green-500 rounded text-[6px] text-white">Generate Schedule</span>
-                        <span className="px-1.5 py-0.5 bg-blue-500 rounded text-[6px] text-white">Bonus Controls</span>
+                      <div className="flex gap-1.5">
+                        <span className="px-2 py-0.5 bg-green-500 rounded text-[7px] text-white font-medium">Generate Schedule</span>
+                        <span className="px-2 py-0.5 bg-blue-500 rounded text-[7px] text-white font-medium">Bonus Controls</span>
                       </div>
                     </div>
                     {/* Schedule rows */}
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {[
-                        { name: 'B. Sullivan', colors: ['bg-purple-500', 'bg-orange-400', 'bg-slate-600', 'bg-pink-400'] },
-                        { name: 'C. Mock', colors: ['bg-cyan-500', 'bg-emerald-500', 'bg-amber-400'] },
-                        { name: 'S. Nelson', colors: ['bg-green-500', 'bg-blue-500', 'bg-red-400', 'bg-orange-500'] },
-                        { name: 'I. Alvarez', colors: ['bg-yellow-400', 'bg-purple-400', 'bg-pink-500', 'bg-teal-500'] },
-                        { name: 'P. Williams', colors: ['bg-blue-400', 'bg-rose-400', 'bg-emerald-400', 'bg-amber-500'] },
-                        { name: 'M. Anderson', colors: ['bg-indigo-400', 'bg-green-400', 'bg-orange-400'] },
-                        { name: 'R. Foster', colors: ['bg-teal-400', 'bg-pink-400', 'bg-cyan-400', 'bg-violet-400'] },
-                        { name: 'A. Grossman', colors: ['bg-rose-500', 'bg-blue-400', 'bg-amber-400'] },
-                        { name: 'S. Miyazaki', colors: ['bg-emerald-500', 'bg-purple-500', 'bg-orange-400', 'bg-pink-400'] },
-                        { name: 'L. Monroe', colors: ['bg-red-400', 'bg-cyan-500', 'bg-yellow-400', 'bg-green-400'] },
+                        { name: 'B. Sullivan', widths: ['22%', '18%', '12%', '20%', '15%'] as const, colors: ['bg-purple-500', 'bg-orange-400', 'bg-green-500', 'bg-pink-400', 'bg-blue-400'] },
+                        { name: 'C. Mock', widths: ['28%', '20%', '25%'] as const, colors: ['bg-cyan-500', 'bg-emerald-500', 'bg-amber-400'] },
+                        { name: 'S. Nelson', widths: ['18%', '15%', '20%', '12%', '22%'] as const, colors: ['bg-green-500', 'bg-blue-500', 'bg-red-400', 'bg-orange-500', 'bg-teal-400'] },
+                        { name: 'I. Alvarez', widths: ['25%', '15%', '22%', '18%'] as const, colors: ['bg-yellow-400', 'bg-purple-400', 'bg-pink-500', 'bg-teal-500'] },
+                        { name: 'P. Williams', widths: ['20%', '18%', '15%', '25%'] as const, colors: ['bg-blue-400', 'bg-rose-400', 'bg-emerald-400', 'bg-amber-500'] },
+                        { name: 'M. Anderson', widths: ['30%', '22%', '25%'] as const, colors: ['bg-indigo-400', 'bg-green-400', 'bg-orange-400'] },
+                        { name: 'R. Foster', widths: ['18%', '22%', '15%', '20%'] as const, colors: ['bg-teal-400', 'bg-pink-400', 'bg-cyan-400', 'bg-violet-400'] },
+                        { name: 'A. Grossman', widths: ['25%', '20%', '28%'] as const, colors: ['bg-rose-500', 'bg-blue-400', 'bg-amber-400'] },
+                        { name: 'S. Miyazaki', widths: ['20%', '18%', '22%', '15%'] as const, colors: ['bg-emerald-500', 'bg-purple-500', 'bg-orange-400', 'bg-pink-400'] },
+                        { name: 'L. Monroe', widths: ['22%', '15%', '25%', '18%'] as const, colors: ['bg-red-400', 'bg-cyan-500', 'bg-yellow-400', 'bg-green-400'] },
                       ].map((row, i) => (
-                        <div key={i} className="flex items-center gap-1">
-                          <span className="text-[6px] text-slate-300 w-14 truncate">{row.name}</span>
-                          <div className="flex-1 flex gap-0.5">
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-[8px] text-slate-300 w-16 truncate font-medium">{row.name}</span>
+                          <div className="flex-1 flex gap-1">
                             {row.colors.map((color, j) => (
                               <div
                                 key={j}
-                                className={`${color} h-2.5 rounded-sm`}
-                                style={{ width: `${20 + Math.random() * 30}%` }}
+                                className={`${color} h-4 rounded`}
+                                style={{ width: row.widths[j] }}
                               />
                             ))}
                           </div>
@@ -119,12 +119,13 @@ const LandingPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                {/* Stand */}
+                {/* Stand neck */}
                 <div className="flex justify-center">
-                  <div className="w-24 h-4 bg-gradient-to-b from-slate-600 to-slate-500 rounded-b-sm" />
+                  <div className="w-20 h-6 bg-gradient-to-b from-slate-600 to-slate-500" />
                 </div>
+                {/* Stand base */}
                 <div className="flex justify-center">
-                  <div className="w-36 h-2 bg-gradient-to-b from-slate-500 to-slate-400 rounded-b-lg" />
+                  <div className="w-40 h-2.5 bg-gradient-to-b from-slate-500 to-slate-400 rounded-b-xl" />
                 </div>
               </div>
             </div>
