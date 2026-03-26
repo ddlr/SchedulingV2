@@ -42,7 +42,7 @@ const LandingPage: React.FC = () => {
             Scheduling in ABA is Broken.
           </h1>
           <p className="text-lg sm:text-xl text-white/90 max-w-4xl mx-auto leading-relaxed mb-4">
-            Spreadsheets and human memory can't keep up with clinical complexity. When scheduling fails, your entire clinic suffers-{' '}
+            Spreadsheets and human memory can't keep up with clinical complexity. When scheduling fails, your entire clinic suffers -{' '}
             <span className="font-bold underline decoration-2 underline-offset-4">
              leading to lost revenue, denied claims, and burned-out therapists.
             </span>
