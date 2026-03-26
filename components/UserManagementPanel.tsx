@@ -154,6 +154,8 @@ const UserManagementPanel: React.FC = () => {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
+      case 'super_admin':
+        return 'bg-amber-100 text-amber-700';
       case 'admin':
         return 'bg-purple-100 text-purple-700';
       case 'staff':

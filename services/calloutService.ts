@@ -1,8 +1,10 @@
 import { Callout } from '../types';
 import { supabase } from '../lib/supabase';
-import { timeToMinutes } from '../utils/validationService';
+import { getCurrentOrgId, getCurrentOrgIdOrNull } from './orgHelper';
 
 let _callouts: Callout[] = [];
+let _initialized = false;
+let _realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
 const listeners: Array<(callouts: Callout[]) => void> = [];
 
 const notifyListeners = () => {
@@ -11,9 +13,11 @@ const notifyListeners = () => {
 
 const loadCallouts = async () => {
   try {
+    const orgId = getCurrentOrgId();
     const { data, error } = await supabase
       .from('callouts')
       .select('*')
+      .eq('organization_id', orgId)
       .order('start_date')
       .order('start_time');
 
@@ -38,18 +42,38 @@ const loadCallouts = async () => {
   }
 };
 
-loadCallouts();
-
 const setupRealtimeSubscription = () => {
-  supabase
+  if (_realtimeChannel) {
+    supabase.removeChannel(_realtimeChannel);
+  }
+  const orgId = getCurrentOrgIdOrNull();
+  if (!orgId) return;
+  _realtimeChannel = supabase
     .channel('callouts_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'callouts' }, () => {
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'callouts',
+      filter: `organization_id=eq.${orgId}`
+    }, () => {
       loadCallouts();
     })
     .subscribe();
 };
 
-setupRealtimeSubscription();
+const ensureInitialized = () => {
+  if (!_initialized) {
+    _initialized = true;
+    loadCallouts();
+    setupRealtimeSubscription();
+  }
+};
+
+export const reinitializeCallouts = () => {
+  _initialized = false;
+  _callouts = [];
+  ensureInitialized();
+};
 
 export const getCallouts = (): Callout[] => {
   return [..._callouts];
@@ -57,6 +81,7 @@ export const getCallouts = (): Callout[] => {
 
 export const addCalloutEntry = async (newCallout: Omit<Callout, 'id'>): Promise<Callout[]> => {
   try {
+    const orgId = getCurrentOrgId();
     const id = `callout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const { error } = await supabase
       .from('callouts')
@@ -69,7 +94,8 @@ export const addCalloutEntry = async (newCallout: Omit<Callout, 'id'>): Promise<
         end_date: newCallout.endDate,
         start_time: newCallout.startTime,
         end_time: newCallout.endTime,
-        reason: newCallout.reason
+        reason: newCallout.reason,
+        organization_id: orgId
       });
 
     if (error) throw error;
@@ -128,8 +154,8 @@ export const updateCalloutEntry = async (updatedCallout: Callout): Promise<Callo
 
 export const subscribeToCallouts = (listener: (callouts: Callout[]) => void): (() => void) => {
   listeners.push(listener);
+  ensureInitialized();
   listener([..._callouts]);
-  // Re-fetch in case the initial module-level load ran before auth was ready
   loadCallouts();
 
   return () => {

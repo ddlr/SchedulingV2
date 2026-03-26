@@ -2,6 +2,7 @@
 import { GeneratedSchedule, ScheduleEntry, Client, Therapist, ValidationError } from '../types';
 import { supabase } from '../lib/supabase';
 import { timeToMinutes, minutesToTime } from '../utils/validationService';
+import { getCurrentOrgId } from './orgHelper';
 
 const generateFeedbackId = () => `fb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 const generatePatternId = () => `pat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -33,6 +34,7 @@ export interface ConstraintPattern {
 export class ScheduleLearningService {
   static async submitFeedback(feedback: ScheduleFeedback): Promise<boolean> {
     try {
+      const orgId = getCurrentOrgId();
       const { error } = await supabase.from('schedule_feedback').insert({
         id: generateFeedbackId(),
         schedule_json: feedback.schedule,
@@ -41,6 +43,7 @@ export class ScheduleLearningService {
         violations_detail: feedback.violationsDetail,
         feedback_text: feedback.feedbackText,
         team_id: feedback.teamId,
+        organization_id: orgId,
         created_at: new Date().toISOString()
       });
 
@@ -59,9 +62,11 @@ export class ScheduleLearningService {
 
   static async getHighRatedSchedules(minRating: number = 4): Promise<GeneratedSchedule[]> {
     try {
+      const orgId = getCurrentOrgId();
       const { data, error } = await supabase
         .from('schedule_feedback')
         .select('schedule_json')
+        .eq('organization_id', orgId)
         .gte('rating', minRating)
         .order('rating', { ascending: false })
         .limit(50);
@@ -76,9 +81,11 @@ export class ScheduleLearningService {
 
   static async analyzeBestPatterns(): Promise<LearnedPattern[]> {
     try {
+      const orgId = getCurrentOrgId();
       const { data, error } = await supabase
         .from('schedule_patterns')
         .select('*')
+        .eq('organization_id', orgId)
         .order('effectiveness_score', { ascending: false })
         .limit(20);
 
@@ -97,9 +104,11 @@ export class ScheduleLearningService {
 
   static async getConstraintProblems(): Promise<ConstraintPattern[]> {
     try {
+      const orgId = getCurrentOrgId();
       const { data, error } = await supabase
         .from('constraint_violations_log')
         .select('*')
+        .eq('organization_id', orgId)
         .order('violation_count', { ascending: false })
         .limit(15);
 
@@ -246,9 +255,11 @@ export class ScheduleLearningService {
     try {
       const effectivenessBoost = rating > 4 ? 0.1 : 0.02;
 
+      const orgId = getCurrentOrgId();
       const { data: existing, error: fetchError } = await supabase
         .from('schedule_patterns')
         .select('id, effectiveness_score, sample_count')
+        .eq('organization_id', orgId)
         .eq('pattern_type', pattern.type)
         .maybeSingle();
 
@@ -277,6 +288,7 @@ export class ScheduleLearningService {
             pattern_data: pattern.data,
             effectiveness_score: effectivenessBoost,
             sample_count: 1,
+            organization_id: orgId,
             created_at: new Date().toISOString()
           });
 
@@ -289,9 +301,11 @@ export class ScheduleLearningService {
 
   private static async recordViolation(ruleId: string): Promise<void> {
     try {
+      const orgId = getCurrentOrgId();
       const { data: existing, error: fetchError } = await supabase
         .from('constraint_violations_log')
         .select('id, violation_count')
+        .eq('organization_id', orgId)
         .eq('rule_id', ruleId)
         .maybeSingle();
 
@@ -314,6 +328,7 @@ export class ScheduleLearningService {
             id: generateViolationId(),
             rule_id: ruleId,
             violation_count: 1,
+            organization_id: orgId,
             created_at: new Date().toISOString()
           });
 
@@ -326,9 +341,11 @@ export class ScheduleLearningService {
 
   static async getAverageFeedbackRating(limit: number = 100): Promise<number> {
     try {
+      const orgId = getCurrentOrgId();
       const { data, error } = await supabase
         .from('schedule_feedback')
         .select('rating')
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
