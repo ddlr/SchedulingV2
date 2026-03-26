@@ -1,5 +1,5 @@
 /*
-  # Add Multi-Tenancy Support
+  # Add Multi-Tenancy Support (IDEMPOTENT - safe to run multiple times)
 
   ## Overview
   Converts the application from single-tenant to multi-tenant by adding:
@@ -20,7 +20,7 @@
 -- ============================================================
 -- 1. CREATE ORGANIZATIONS TABLE
 -- ============================================================
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   slug text UNIQUE NOT NULL,
@@ -34,7 +34,14 @@ ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 -- ============================================================
 -- 2. ADD organization_id TO users TABLE
 -- ============================================================
-ALTER TABLE users ADD COLUMN organization_id uuid REFERENCES organizations(id);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'organization_id'
+  ) THEN
+    ALTER TABLE users ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+END $$;
 
 -- ============================================================
 -- 3. EXPAND ROLE CONSTRAINT TO INCLUDE super_admin
@@ -46,23 +53,59 @@ ALTER TABLE users ADD CONSTRAINT users_role_check
 -- ============================================================
 -- 4. ADD organization_id TO ALL OPERATIONAL TABLES
 -- ============================================================
-ALTER TABLE clients ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE therapists ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE teams ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE callouts ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE base_schedules ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE daily_schedules ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE settings ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE system_config ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE schedule_feedback ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE schedule_patterns ADD COLUMN organization_id uuid REFERENCES organizations(id);
-ALTER TABLE constraint_violations_log ADD COLUMN organization_id uuid REFERENCES organizations(id);
+DO $$ BEGIN
+  -- clients
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'clients' AND column_name = 'organization_id') THEN
+    ALTER TABLE clients ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- therapists
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'therapists' AND column_name = 'organization_id') THEN
+    ALTER TABLE therapists ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- teams
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'organization_id') THEN
+    ALTER TABLE teams ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- callouts
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'callouts' AND column_name = 'organization_id') THEN
+    ALTER TABLE callouts ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- base_schedules
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'base_schedules' AND column_name = 'organization_id') THEN
+    ALTER TABLE base_schedules ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- daily_schedules
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'daily_schedules' AND column_name = 'organization_id') THEN
+    ALTER TABLE daily_schedules ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- settings
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'settings' AND column_name = 'organization_id') THEN
+    ALTER TABLE settings ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- system_config
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'system_config' AND column_name = 'organization_id') THEN
+    ALTER TABLE system_config ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- schedule_feedback
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'schedule_feedback' AND column_name = 'organization_id') THEN
+    ALTER TABLE schedule_feedback ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- schedule_patterns
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'schedule_patterns' AND column_name = 'organization_id') THEN
+    ALTER TABLE schedule_patterns ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+  -- constraint_violations_log
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'constraint_violations_log' AND column_name = 'organization_id') THEN
+    ALTER TABLE constraint_violations_log ADD COLUMN organization_id uuid REFERENCES organizations(id);
+  END IF;
+END $$;
 
 -- ============================================================
 -- 5. CREATE DEFAULT ORGANIZATION & MIGRATE EXISTING DATA
 -- ============================================================
 INSERT INTO organizations (id, name, slug)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Default Organization', 'default');
+VALUES ('00000000-0000-0000-0000-000000000001', 'Default Organization', 'default')
+ON CONFLICT (id) DO NOTHING;
 
 -- Assign all existing data to the default organization
 UPDATE users SET organization_id = '00000000-0000-0000-0000-000000000001' WHERE organization_id IS NULL AND role != 'super_admin';
@@ -79,23 +122,57 @@ UPDATE schedule_patterns SET organization_id = '00000000-0000-0000-0000-00000000
 UPDATE constraint_violations_log SET organization_id = '00000000-0000-0000-0000-000000000001' WHERE organization_id IS NULL;
 
 -- Make organization_id NOT NULL on operational tables (users stays nullable for super_admin)
-ALTER TABLE clients ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE therapists ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE teams ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE callouts ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE base_schedules ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE daily_schedules ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE settings ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE system_config ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE schedule_feedback ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE schedule_patterns ALTER COLUMN organization_id SET NOT NULL;
-ALTER TABLE constraint_violations_log ALTER COLUMN organization_id SET NOT NULL;
+-- Using DO blocks so SET NOT NULL is safe to re-run
+DO $$ BEGIN
+  ALTER TABLE clients ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE therapists ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE teams ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE callouts ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE base_schedules ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE daily_schedules ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE settings ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE system_config ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE schedule_feedback ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE schedule_patterns ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE constraint_violations_log ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- ============================================================
 -- 6. CREATE SUPER ADMIN USER
 -- ============================================================
 INSERT INTO users (email, full_name, role, is_active, organization_id)
-VALUES ('team@ordusaba.com', 'Super Administrator', 'super_admin', true, NULL)
+VALUES ('superadmin@ordusaba.com', 'Super Administrator', 'super_admin', true, NULL)
 ON CONFLICT (email) DO UPDATE SET role = 'super_admin', organization_id = NULL;
 
 -- ============================================================
@@ -176,6 +253,7 @@ $$;
 -- ============================================================
 
 -- Super admin: full CRUD on organizations
+DROP POLICY IF EXISTS "Super admins can manage organizations" ON organizations;
 CREATE POLICY "Super admins can manage organizations"
   ON organizations
   FOR ALL
@@ -184,6 +262,7 @@ CREATE POLICY "Super admins can manage organizations"
   WITH CHECK (is_super_admin());
 
 -- Admins can read their own organization
+DROP POLICY IF EXISTS "Users can view own organization" ON organizations;
 CREATE POLICY "Users can view own organization"
   ON organizations
   FOR SELECT
@@ -198,6 +277,12 @@ DROP POLICY IF EXISTS "Admins can read all users" ON users;
 DROP POLICY IF EXISTS "Admins can insert users" ON users;
 DROP POLICY IF EXISTS "Admins can update users" ON users;
 DROP POLICY IF EXISTS "Users can insert own data" ON users;
+DROP POLICY IF EXISTS "Super admins can read all users" ON users;
+DROP POLICY IF EXISTS "Admins can read org users" ON users;
+DROP POLICY IF EXISTS "Super admins can insert users" ON users;
+DROP POLICY IF EXISTS "Admins can insert org users" ON users;
+DROP POLICY IF EXISTS "Super admins can update users" ON users;
+DROP POLICY IF EXISTS "Admins can update org users" ON users;
 
 -- Users can read their own record
 CREATE POLICY "Users can read own data"
@@ -259,7 +344,7 @@ CREATE POLICY "Admins can update org users"
 -- 11. UPDATE RLS POLICIES ON ALL 11 OPERATIONAL TABLES
 -- ============================================================
 
--- Helper macro: For each table we drop old policies and create org-scoped ones.
+-- Helper macro: For each table we drop old AND new policies, then create org-scoped ones.
 -- Super admin has NO access to operational data.
 
 -- --------------- CLIENTS ---------------
@@ -267,6 +352,10 @@ DROP POLICY IF EXISTS "Authenticated users can view clients" ON clients;
 DROP POLICY IF EXISTS "Staff and admins can insert clients" ON clients;
 DROP POLICY IF EXISTS "Staff and admins can update clients" ON clients;
 DROP POLICY IF EXISTS "Staff and admins can delete clients" ON clients;
+DROP POLICY IF EXISTS "Org users can view clients" ON clients;
+DROP POLICY IF EXISTS "Org staff can insert clients" ON clients;
+DROP POLICY IF EXISTS "Org staff can update clients" ON clients;
+DROP POLICY IF EXISTS "Org staff can delete clients" ON clients;
 
 CREATE POLICY "Org users can view clients"
   ON clients FOR SELECT TO authenticated
@@ -290,6 +379,10 @@ DROP POLICY IF EXISTS "Authenticated users can view therapists" ON therapists;
 DROP POLICY IF EXISTS "Staff and admins can insert therapists" ON therapists;
 DROP POLICY IF EXISTS "Staff and admins can update therapists" ON therapists;
 DROP POLICY IF EXISTS "Staff and admins can delete therapists" ON therapists;
+DROP POLICY IF EXISTS "Org users can view therapists" ON therapists;
+DROP POLICY IF EXISTS "Org staff can insert therapists" ON therapists;
+DROP POLICY IF EXISTS "Org staff can update therapists" ON therapists;
+DROP POLICY IF EXISTS "Org staff can delete therapists" ON therapists;
 
 CREATE POLICY "Org users can view therapists"
   ON therapists FOR SELECT TO authenticated
@@ -313,6 +406,10 @@ DROP POLICY IF EXISTS "Authenticated users can view teams" ON teams;
 DROP POLICY IF EXISTS "Staff and admins can insert teams" ON teams;
 DROP POLICY IF EXISTS "Staff and admins can update teams" ON teams;
 DROP POLICY IF EXISTS "Staff and admins can delete teams" ON teams;
+DROP POLICY IF EXISTS "Org users can view teams" ON teams;
+DROP POLICY IF EXISTS "Org staff can insert teams" ON teams;
+DROP POLICY IF EXISTS "Org staff can update teams" ON teams;
+DROP POLICY IF EXISTS "Org staff can delete teams" ON teams;
 
 CREATE POLICY "Org users can view teams"
   ON teams FOR SELECT TO authenticated
@@ -336,6 +433,10 @@ DROP POLICY IF EXISTS "Authenticated users can view callouts" ON callouts;
 DROP POLICY IF EXISTS "Staff and admins can insert callouts" ON callouts;
 DROP POLICY IF EXISTS "Staff and admins can update callouts" ON callouts;
 DROP POLICY IF EXISTS "Staff and admins can delete callouts" ON callouts;
+DROP POLICY IF EXISTS "Org users can view callouts" ON callouts;
+DROP POLICY IF EXISTS "Org staff can insert callouts" ON callouts;
+DROP POLICY IF EXISTS "Org staff can update callouts" ON callouts;
+DROP POLICY IF EXISTS "Org staff can delete callouts" ON callouts;
 
 CREATE POLICY "Org users can view callouts"
   ON callouts FOR SELECT TO authenticated
@@ -359,6 +460,10 @@ DROP POLICY IF EXISTS "Authenticated users can view base schedules" ON base_sche
 DROP POLICY IF EXISTS "Staff and admins can insert base schedules" ON base_schedules;
 DROP POLICY IF EXISTS "Staff and admins can update base schedules" ON base_schedules;
 DROP POLICY IF EXISTS "Staff and admins can delete base schedules" ON base_schedules;
+DROP POLICY IF EXISTS "Org users can view base_schedules" ON base_schedules;
+DROP POLICY IF EXISTS "Org staff can insert base_schedules" ON base_schedules;
+DROP POLICY IF EXISTS "Org staff can update base_schedules" ON base_schedules;
+DROP POLICY IF EXISTS "Org staff can delete base_schedules" ON base_schedules;
 
 CREATE POLICY "Org users can view base_schedules"
   ON base_schedules FOR SELECT TO authenticated
@@ -382,6 +487,10 @@ DROP POLICY IF EXISTS "Authenticated users can view daily schedules" ON daily_sc
 DROP POLICY IF EXISTS "Staff and admins can insert daily schedules" ON daily_schedules;
 DROP POLICY IF EXISTS "Staff and admins can update daily schedules" ON daily_schedules;
 DROP POLICY IF EXISTS "Staff and admins can delete daily schedules" ON daily_schedules;
+DROP POLICY IF EXISTS "Org users can view daily_schedules" ON daily_schedules;
+DROP POLICY IF EXISTS "Org staff can insert daily_schedules" ON daily_schedules;
+DROP POLICY IF EXISTS "Org staff can update daily_schedules" ON daily_schedules;
+DROP POLICY IF EXISTS "Org staff can delete daily_schedules" ON daily_schedules;
 
 CREATE POLICY "Org users can view daily_schedules"
   ON daily_schedules FOR SELECT TO authenticated
@@ -405,6 +514,10 @@ DROP POLICY IF EXISTS "Authenticated users can view settings" ON settings;
 DROP POLICY IF EXISTS "Staff and admins can insert settings" ON settings;
 DROP POLICY IF EXISTS "Staff and admins can update settings" ON settings;
 DROP POLICY IF EXISTS "Staff and admins can delete settings" ON settings;
+DROP POLICY IF EXISTS "Org users can view settings" ON settings;
+DROP POLICY IF EXISTS "Org staff can insert settings" ON settings;
+DROP POLICY IF EXISTS "Org staff can update settings" ON settings;
+DROP POLICY IF EXISTS "Org staff can delete settings" ON settings;
 
 CREATE POLICY "Org users can view settings"
   ON settings FOR SELECT TO authenticated
@@ -428,6 +541,10 @@ DROP POLICY IF EXISTS "Authenticated users can view system config" ON system_con
 DROP POLICY IF EXISTS "Staff and admins can insert system config" ON system_config;
 DROP POLICY IF EXISTS "Staff and admins can update system config" ON system_config;
 DROP POLICY IF EXISTS "Staff and admins can delete system config" ON system_config;
+DROP POLICY IF EXISTS "Org users can view system_config" ON system_config;
+DROP POLICY IF EXISTS "Org staff can insert system_config" ON system_config;
+DROP POLICY IF EXISTS "Org staff can update system_config" ON system_config;
+DROP POLICY IF EXISTS "Org staff can delete system_config" ON system_config;
 
 CREATE POLICY "Org users can view system_config"
   ON system_config FOR SELECT TO authenticated
@@ -451,6 +568,10 @@ DROP POLICY IF EXISTS "Authenticated users can view schedule feedback" ON schedu
 DROP POLICY IF EXISTS "Staff and admins can insert schedule feedback" ON schedule_feedback;
 DROP POLICY IF EXISTS "Staff and admins can update schedule feedback" ON schedule_feedback;
 DROP POLICY IF EXISTS "Staff and admins can delete schedule feedback" ON schedule_feedback;
+DROP POLICY IF EXISTS "Org users can view schedule_feedback" ON schedule_feedback;
+DROP POLICY IF EXISTS "Org staff can insert schedule_feedback" ON schedule_feedback;
+DROP POLICY IF EXISTS "Org staff can update schedule_feedback" ON schedule_feedback;
+DROP POLICY IF EXISTS "Org staff can delete schedule_feedback" ON schedule_feedback;
 
 CREATE POLICY "Org users can view schedule_feedback"
   ON schedule_feedback FOR SELECT TO authenticated
@@ -474,6 +595,10 @@ DROP POLICY IF EXISTS "Authenticated users can view schedule patterns" ON schedu
 DROP POLICY IF EXISTS "Staff and admins can insert schedule patterns" ON schedule_patterns;
 DROP POLICY IF EXISTS "Staff and admins can update schedule patterns" ON schedule_patterns;
 DROP POLICY IF EXISTS "Staff and admins can delete schedule patterns" ON schedule_patterns;
+DROP POLICY IF EXISTS "Org users can view schedule_patterns" ON schedule_patterns;
+DROP POLICY IF EXISTS "Org staff can insert schedule_patterns" ON schedule_patterns;
+DROP POLICY IF EXISTS "Org staff can update schedule_patterns" ON schedule_patterns;
+DROP POLICY IF EXISTS "Org staff can delete schedule_patterns" ON schedule_patterns;
 
 CREATE POLICY "Org users can view schedule_patterns"
   ON schedule_patterns FOR SELECT TO authenticated
@@ -497,6 +622,10 @@ DROP POLICY IF EXISTS "Authenticated users can view constraint violations" ON co
 DROP POLICY IF EXISTS "Staff and admins can insert constraint violations" ON constraint_violations_log;
 DROP POLICY IF EXISTS "Staff and admins can update constraint violations" ON constraint_violations_log;
 DROP POLICY IF EXISTS "Staff and admins can delete constraint violations" ON constraint_violations_log;
+DROP POLICY IF EXISTS "Org users can view constraint_violations_log" ON constraint_violations_log;
+DROP POLICY IF EXISTS "Org staff can insert constraint_violations_log" ON constraint_violations_log;
+DROP POLICY IF EXISTS "Org staff can update constraint_violations_log" ON constraint_violations_log;
+DROP POLICY IF EXISTS "Org staff can delete constraint_violations_log" ON constraint_violations_log;
 
 CREATE POLICY "Org users can view constraint_violations_log"
   ON constraint_violations_log FOR SELECT TO authenticated
