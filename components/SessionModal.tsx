@@ -332,6 +332,22 @@ const SessionModal: React.FC<SessionModalProps> = ({
                 </optgroup>
               )}
             </select>
+            {formData.therapistId && (() => {
+              const therapist = therapists.find(t => t.id === formData.therapistId);
+              if (!therapist) return null;
+              const creds = [therapist.role, ...therapist.qualifications];
+              if (creds.length === 0) return null;
+              return (
+                <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-1">Credentials:</span>
+                  {creds.map((q, i) => (
+                    <span key={i} className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      {q}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div>
@@ -360,6 +376,20 @@ const SessionModal: React.FC<SessionModalProps> = ({
                 </optgroup>
               )}
             </select>
+            {formData.clientId && (() => {
+              const client = clients.find(c => c.id === formData.clientId);
+              if (!client || client.insuranceRequirements.length === 0) return null;
+              return (
+                <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-1">Insurance:</span>
+                  {client.insuranceRequirements.map((req, i) => (
+                    <span key={i} className="bg-amber-50 text-amber-600 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      {req}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
