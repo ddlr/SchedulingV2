@@ -9,6 +9,8 @@ import { PlusIcon } from './icons/PlusIcon';
 import { XMarkIcon } from './icons/XMarkIcon';
 import { EditIcon } from './icons/EditIcon';
 import { UserGroupIcon } from './icons/UserGroupIcon';
+import { emailSignupService, EmailSignup } from '../services/emailSignupService';
+import { demoRequestService, DemoRequest } from '../services/demoRequestService';
 
 interface OrgWithUsers extends Organization {
   userCount?: number;
@@ -24,6 +26,8 @@ const SuperAdminDashboard: React.FC = () => {
   const [orgUsers, setOrgUsers] = useState<User[]>([]);
   const [showCreateOrgModal, setShowCreateOrgModal] = useState(false);
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [emailSignups, setEmailSignups] = useState<EmailSignup[]>([]);
+  const [demoRequests, setDemoRequests] = useState<DemoRequest[]>([]);
 
   const [orgFormData, setOrgFormData] = useState({ name: '', slug: '' });
   const [adminFormData, setAdminFormData] = useState({ email: '', password: '', full_name: '' });
@@ -43,9 +47,19 @@ const SuperAdminDashboard: React.FC = () => {
     setLoading(false);
   }, []);
 
+  const loadSignupsAndRequests = useCallback(async () => {
+    const [signups, requests] = await Promise.all([
+      emailSignupService.getAllSignups(),
+      demoRequestService.getAllRequests(),
+    ]);
+    setEmailSignups(signups);
+    setDemoRequests(requests);
+  }, []);
+
   useEffect(() => {
     loadOrganizations();
-  }, [loadOrganizations]);
+    loadSignupsAndRequests();
+  }, [loadOrganizations, loadSignupsAndRequests]);
 
   const handleSelectOrg = async (org: OrgWithUsers) => {
     setSelectedOrg(org);
@@ -121,6 +135,30 @@ const SuperAdminDashboard: React.FC = () => {
 
   const autoSlug = (name: string) => {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  };
+
+  const handleUpdateDemoStatus = async (id: string, status: DemoRequest['status']) => {
+    const result = await demoRequestService.updateRequestStatus(id, status);
+    if (result.success) {
+      await loadSignupsAndRequests();
+    } else {
+      alert(result.error || 'Failed to update status');
+    }
+  };
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'contacted':
+        return 'bg-blue-500/20 text-blue-400';
+      case 'approved':
+        return 'bg-green-500/20 text-green-400';
+      case 'rejected':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-slate-500/20 text-slate-400';
+    }
   };
 
   const getRoleBadgeColor = (role: string) => {
@@ -309,6 +347,103 @@ const SuperAdminDashboard: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Email Signups Section */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-700">
+            <h2 className="text-lg font-semibold text-white">Email Signups</h2>
+          </div>
+          {emailSignups.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">No email signups yet</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-slate-700/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Source</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Subscribed</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700">
+                {emailSignups.map((signup) => (
+                  <tr key={signup.id} className="hover:bg-slate-700/30">
+                    <td className="px-4 py-3 text-sm text-white">{signup.email}</td>
+                    <td className="px-4 py-3 text-sm text-slate-300">{signup.signup_source}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                        signup.subscribed ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {signup.subscribed ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-400">
+                      {new Date(signup.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Demo Requests Section */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-700">
+            <h2 className="text-lg font-semibold text-white">Demo Requests</h2>
+          </div>
+          {demoRequests.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">No demo requests yet</div>
+          ) : (
+            <div className="divide-y divide-slate-700">
+              {demoRequests.map((request) => (
+                <div key={request.id} className="p-6">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-bold text-white">{request.company_name}</h4>
+                      <p className="text-sm text-slate-300">{request.contact_name}</p>
+                      <p className="text-sm text-slate-400">{request.email}</p>
+                      {request.phone && <p className="text-sm text-slate-400">{request.phone}</p>}
+                    </div>
+                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusBadgeColor(request.status)}`}>
+                      {request.status}
+                    </span>
+                  </div>
+                  {request.message && (
+                    <p className="text-sm text-slate-300 mb-3 italic">"{request.message}"</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleUpdateDemoStatus(request.id, 'contacted')}
+                      className="px-3 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30"
+                    >
+                      Mark Contacted
+                    </button>
+                    <button
+                      onClick={() => handleUpdateDemoStatus(request.id, 'approved')}
+                      className="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleUpdateDemoStatus(request.id, 'rejected')}
+                      className="px-3 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Submitted: {new Date(request.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
