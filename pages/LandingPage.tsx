@@ -38,15 +38,21 @@ const LandingPage: React.FC = () => {
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto text-center">
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-8 leading-tight">
-            Scheduling in ABA is Broken.
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-tight tracking-tight">
+            Scheduling in ABA is <span className="text-yellow-300">Broken.</span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/90 max-w-4xl mx-auto leading-relaxed mb-4">
-            Spreadsheets and human memory can't keep up with clinical complexity. When scheduling fails, your entire clinic suffers -{' '}
-            <span className="font-bold underline decoration-2 underline-offset-4">
-             leading to lost revenue, denied claims, and burned-out therapists.
+          <p className="text-lg sm:text-xl text-blue-50 max-w-3xl mx-auto leading-relaxed mb-10">
+            Spreadsheets and human memory can't keep up with clinical complexity. When scheduling fails, your entire practice suffers—leading to{' '}
+            <span className="font-bold text-white">
+              lost revenue, denied claims, and burned-out therapists.
             </span>
           </p>
+          <button
+            onClick={() => setShowDemoModal(true)}
+            className="px-10 py-4 bg-yellow-400 text-slate-900 rounded-full hover:bg-yellow-300 transition-colors font-bold text-lg uppercase tracking-wide shadow-xl transform hover:-translate-y-0.5"
+          >
+            See How Ordus Fixes It
+          </button>
         </div>
       </section>
 
@@ -126,61 +132,48 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Book a Demo CTA */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-center">
-          <button
-            onClick={() => setShowDemoModal(true)}
-            className="px-12 py-4 bg-white text-slate-800 rounded-full hover:bg-white/90 transition-colors font-semibold text-lg uppercase tracking-wide shadow-lg"
-          >
-            Book a Demo
-          </button>
-        </div>
-      </section>
-
       {/* Features Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-6">
+          <div className="text-center mb-10">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
               Built for the Real-World Chaos of ABA Clinics
             </h2>
-            <p className="text-lg text-white/80 max-w-4xl mx-auto">
-              Ordus evaluates thousands of schedule combinations to deliver clinically valid, compliant, and staff
-              friendly-schedules.
+            <p className="text-lg text-blue-50 max-w-3xl mx-auto">
+              Ordus evaluates thousands of schedule combinations instantly to deliver clinically valid, compliant, and staff-friendly schedules.
             </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
             <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
               <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
-                Intelligent Schedule Generation
+                Intelligent Generation
               </h3>
               <p className="text-slate-600 leading-relaxed">
-                Optimized for billable hours, travel efficiency, and therapist wellbeing.
+                Maximize billable hours, streamline travel efficiency, and prioritize therapist wellbeing automatically.
               </p>
             </div>
             <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
               <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
-                Constraint and Compliance Engine
+                Compliance Engine
               </h3>
               <p className="text-slate-600 leading-relaxed">
-                Insurance credentialing, supervision ratios, labor rules — enforced in real time.
+                Insurance credentialing, supervision ratios, and labor rules are enforced in real time, every time.
               </p>
             </div>
             <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
               <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
-                Adaptive Schedule Re-Optimization
+                Adaptive Re-Routing
               </h3>
               <p className="text-slate-600 leading-relaxed">
-                Lock what matters, re-optimize the rest when cancellations or call-outs happen.
+                Lock in what matters, and let the system re-optimize the rest when unexpected cancellations happen.
               </p>
             </div>
             <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
               <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
-                Visual, Interactive Scheduling
+                Visual Scheduling
               </h3>
               <p className="text-slate-600 leading-relaxed">
-                Gantt-style views, drag-and-drop adjustments, instant validation.
+                Clean Gantt-style views with intuitive drag-and-drop adjustments and instant clinical validation.
               </p>
             </div>
           </div>
@@ -188,16 +181,16 @@ const LandingPage: React.FC = () => {
       </section>
 
       {/* Scrolling Marquee Ticker */}
-      <section className="bg-blue-300/60 py-5 overflow-hidden">
+      <section className="bg-blue-500/50 py-5 overflow-hidden border-y border-blue-300/30">
         <div className="animate-marquee whitespace-nowrap flex items-center">
-          {[1, 2].map((set) => (
+          {[1, 2, 3].map((set) => (
             <div key={set} className="flex items-center">
-              <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Turn hours of scheduling into minutes</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Schedules your therapists will actually love.</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white mx-6">Stop denied claims before they happen</span>
-              <span className="text-2xl sm:text-3xl font-bold text-white/60 mx-4">&gt;</span>
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Turn scheduling hours into minutes</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Schedules your therapists will actually love</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Stop denied claims before they happen</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
             </div>
           ))}
         </div>
@@ -213,29 +206,27 @@ const LandingPage: React.FC = () => {
               </h2>
               {/* Decorative underline */}
               <svg className="absolute -bottom-3 left-0 w-full" viewBox="0 0 400 12" fill="none">
-                <path d="M2 8C80 2 200 2 398 8" stroke="#60A5FA" strokeWidth="3" strokeLinecap="round" />
+                <path d="M2 8C80 2 200 2 398 8" stroke="#FBBF24" strokeWidth="3" strokeLinecap="round" />
               </svg>
             </div>
           </div>
           <div className="grid md:grid-cols-3 gap-10">
-            <div>
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
               <h3 className="text-2xl font-bold text-white mb-4">The Problem</h3>
-              <p className="text-white/80 leading-relaxed text-lg">
-                Schedulers spend <b>10-20 hours per week</b> manually adjusting schedules. A single cancellation
-                can trigger cascading conflicts.
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Schedulers spend <span className="font-bold text-white">10-20 hours per week</span> manually adjusting schedules. A single cancellation can trigger cascading operational conflicts.
               </p>
             </div>
-            <div>
-              <h3 className="text-2xl font-bold text-yellow-400 mb-4">Ordus Solution</h3>
-              <p className="text-white/80 leading-relaxed text-lg">
-                Ordus' proprietary algorithm generates valid daily schedules in seconds, dynamically
-                recalculating when changes occur.
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Solution</h3>
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Ordus' proprietary algorithm generates valid daily schedules <span className="font-bold text-white">in seconds</span>, dynamically recalculating the moment changes occur.
               </p>
             </div>
-            <div>
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
               <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Result</h3>
-              <p className="text-white/80 leading-relaxed text-lg">
-                Reduce administrative overhead by 80%, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Reduce administrative overhead by <span className="font-bold text-white">80%</span>, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
               </p>
             </div>
           </div>
@@ -249,8 +240,8 @@ const LandingPage: React.FC = () => {
             <SparklesIcon className="w-5 h-5 text-white" />
             <span className="text-base font-bold text-white">Ordus ABA</span>
           </div>
-          <p className="text-white/60 text-sm">
-            Smarter scheduling for ABA operations
+          <p className="text-indigo-300 text-sm">
+            Smarter scheduling for modern ABA operations.
           </p>
         </div>
       </footer>
