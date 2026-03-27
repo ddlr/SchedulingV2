@@ -1,284 +1,249 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SparklesIcon } from '../components/icons/SparklesIcon';
-import { CalendarIcon } from '../components/icons/CalendarIcon';
-import { UserGroupIcon } from '../components/icons/UserGroupIcon';
-import { ClockIcon } from '../components/icons/ClockIcon';
 import RequestDemoModal from '../components/RequestDemoModal';
-import EmailCaptureForm from '../components/EmailCaptureForm';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [showDemoModal, setShowDemoModal] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200">
+    <div className="min-h-screen bg-blue-400">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-blue-400/90 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <SparklesIcon className="w-6 h-6 text-slate-900" />
-                <span className="text-lg font-bold text-slate-900">Ordus ABA</span>
-              </div>
-              <span className="text-xs text-slate-600 ml-8">Smarter scheduling for ABA operations</span>
+            <div className="flex items-center gap-2">
+              <SparklesIcon className="w-6 h-6 text-white" />
+              <span className="text-lg font-bold text-white">Ordus ABA</span>
             </div>
-            <div className="flex items-center gap-8">
-              <a href="#features" className="text-slate-700 hover:text-slate-900 font-medium">Features</a>
-              <a href="#workflow" className="text-slate-700 hover:text-slate-900 font-medium">Workflow</a>
-              <a href="#demo" className="text-slate-700 hover:text-slate-900 font-medium">Demo</a>
+            <div className="flex items-center gap-6">
               <button
                 onClick={() => navigate('/login')}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                className="text-white hover:text-white/80 font-medium transition-colors"
               >
-                Open demo
+                Schedule
               </button>
               <button
                 onClick={() => setShowDemoModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                className="px-6 py-2 bg-white text-slate-800 rounded-full hover:bg-white/90 transition-colors font-semibold text-sm uppercase tracking-wide"
               >
-                Request access
-                <SparklesIcon className="w-4 h-4" />
+                Book a Demo
               </button>
             </div>
           </div>
         </div>
       </nav>
 
-      <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl">
-            <div className="mb-6">
-              <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                <SparklesIcon className="w-4 h-4" />
-                Built for ABA scheduling teams
-              </span>
-            </div>
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif text-slate-900 mb-6 leading-tight">
-              Valid schedules for your ABA clinic, generated{' '}
-              <span className="text-blue-600">in under 1 minute.</span>
-            </h1>
-            <p className="text-xl text-slate-600 mb-8 leading-relaxed max-w-2xl">
-              Ordus ABA is a credential-aware workspace for ABA operations. Ensure the right staff always matches the right insurance rules, anywhere in the country.
-            </p>
-            <div className="max-w-xl">
-              <EmailCaptureForm source="hero_section" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-4">
-            <h2 className="text-4xl font-serif text-slate-900 mb-4">
-              Built for the way ABA actually schedules
-            </h2>
-            <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-              Keep clients, staff, locations, and supervision constraints in view—without losing the simplicity of a weekly grid.
-            </p>
-          </div>
-          <div className="mt-12 text-right text-sm text-slate-500 mb-8">
-            HIPAA-ready workflows (prototype)
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-white p-8 rounded-xl border border-slate-200 hover:shadow-lg transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                  <CalendarIcon className="w-6 h-6 text-slate-700" />
-                </div>
-                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">Built for ABA</span>
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Callout resolution</h3>
-              <p className="text-slate-600 leading-relaxed">
-                Instantly solve for staff or client callouts with automated re-scheduling and coverage matching.
-              </p>
-            </div>
-
-            <div className="bg-white p-8 rounded-xl border border-slate-200 hover:shadow-lg transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                  <ClockIcon className="w-6 h-6 text-slate-700" />
-                </div>
-                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">Built for ABA</span>
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Indirect time balancing</h3>
-              <p className="text-slate-600 leading-relaxed">
-                Balance non-billable time across your team based on a custom hierarchy you define.
-              </p>
-            </div>
-
-            <div className="bg-white p-8 rounded-xl border border-slate-200 hover:shadow-lg transition-all">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                  <UserGroupIcon className="w-6 h-6 text-slate-700" />
-                </div>
-                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">Built for ABA</span>
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Instant generation</h3>
-              <p className="text-slate-600 leading-relaxed">
-                Generate a complete, valid schedule for your entire clinic in under 60 seconds.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="workflow" className="py-20 px-4 sm:px-6 lg:px-8 bg-slate-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-12">
-            <div className="flex items-center gap-3 mb-4">
-              <SparklesIcon className="w-6 h-6 text-slate-700" />
-              <h2 className="text-4xl font-serif text-slate-900">
-                A clear workflow from intake to schedule
-              </h2>
-            </div>
-            <p className="text-lg text-slate-600">
-              Built for coordinators, not spreadsheets.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-xl border border-slate-200">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">Try the interactive demo</h3>
-              <p className="text-slate-600 mb-8">
-                This is a front-end prototype. Interactions are real, data is demo-only.
-              </p>
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                      <ClockIcon className="w-6 h-6 text-slate-700" />
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-bold text-slate-900 mb-1">Reduce gaps</h4>
-                    <p className="text-slate-600">
-                      Spot and fill empty blocks with one click suggestions.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                      <SparklesIcon className="w-6 h-6 text-slate-700" />
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-bold text-slate-900 mb-1">Protect authorizations</h4>
-                    <p className="text-slate-600">
-                      See units, dates, and constraints right where scheduling happens.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
-                      <UserGroupIcon className="w-6 h-6 text-slate-700" />
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-bold text-slate-900 mb-1">Match the right staff</h4>
-                    <p className="text-slate-600">
-                      Skills, availability, locations, and supervision rules in one view.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-8 flex gap-4">
-                <button
-                  onClick={() => navigate('/login')}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-                >
-                  Launch demo
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                <button
-                  className="px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
-                >
-                  Download one-pager
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-xl border border-slate-200">
-              <div className="flex justify-between items-start mb-6">
-                <h3 className="text-2xl font-bold text-slate-900">Intake snapshot</h3>
-                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">Read-only</span>
-              </div>
-              <p className="text-slate-600 mb-8">
-                How constraints become a schedule.
-              </p>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center py-3 border-b border-slate-200">
-                  <span className="text-slate-600">Client</span>
-                  <span className="text-slate-900 font-medium">Mia R.</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-slate-200">
-                  <span className="text-slate-600">Insurance</span>
-                  <span className="text-slate-900 font-medium">BlueCross</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-slate-200">
-                  <span className="text-slate-600">Status</span>
-                  <span className="text-slate-900 font-medium">Active callout</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-slate-200">
-                  <span className="text-slate-600">Preferred times</span>
-                  <span className="text-slate-900 font-medium">Mon/Wed/Fri mornings</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-slate-200">
-                  <span className="text-slate-600">Location</span>
-                  <span className="text-slate-900 font-medium">Home + school</span>
-                </div>
-              </div>
-              <div className="mt-8 p-6 bg-slate-50 rounded-lg">
-                <h4 className="text-lg font-bold text-slate-900 mb-2">Operations control</h4>
-                <p className="text-slate-600 mb-4">
-                  Resolve callouts and balance indirect time instantly.
-                </p>
-                <button className="w-full px-4 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-white transition-colors font-medium flex items-center justify-between">
-                  <span>Resolve active callouts</span>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="demo" className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-serif text-slate-900 mb-6">
-            Ready to see how it works?
-          </h2>
-          <p className="text-xl text-slate-600 mb-8">
-            Join ABA practices that are simplifying their scheduling operations.
+      {/* Hero Section */}
+      <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto text-center">
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-tight tracking-tight">
+            Scheduling in ABA is <span className="text-yellow-300">Broken.</span>
+          </h1>
+          <p className="text-lg sm:text-xl text-blue-50 max-w-3xl mx-auto leading-relaxed mb-10">
+            Spreadsheets and human memory can't keep up with clinical complexity. When scheduling fails, your entire practice suffers—leading to{' '}
+            <span className="font-bold text-white">
+              lost revenue, denied claims, and burned-out therapists.
+            </span>
           </p>
           <button
             onClick={() => setShowDemoModal(true)}
-            className="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-lg"
+            className="px-10 py-4 bg-yellow-400 text-slate-900 rounded-full hover:bg-yellow-300 transition-colors font-bold text-lg uppercase tracking-wide shadow-xl transform hover:-translate-y-0.5"
           >
-            Request Access
+            See How Ordus Fixes It
           </button>
         </div>
       </section>
 
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-slate-50 border-t border-slate-200">
+      {/* Meet Ordus ABA + Product Mockup */}
+      <section className="pb-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center justify-center">
-            <div className="flex items-center gap-2 mb-2">
-              <SparklesIcon className="w-5 h-5 text-slate-700" />
-              <span className="text-base font-bold text-slate-900">Ordus ABA</span>
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-4xl sm:text-5xl font-bold italic text-yellow-400 mb-6">
+                Meet Ordus ABA
+              </h2>
+              <h3 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight">
+                Stop Wrestling with Schedules. Start Optimizing Care.
+              </h3>
             </div>
-            <p className="text-slate-600 text-sm">
-              Smarter scheduling for ABA operations
+            {/* iMac Mockup */}
+            <div className="flex justify-center">
+              <div className="w-full max-w-xl">
+                {/* Screen bezel */}
+                <div className="bg-slate-900 rounded-t-2xl border-[6px] border-slate-700 p-3 shadow-2xl">
+                  <div className="bg-slate-800 rounded-lg p-3">
+                    {/* Top bar */}
+                    <div className="flex items-center justify-between mb-3 px-2">
+                      <div className="flex items-center gap-2">
+                        <SparklesIcon className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-[9px] text-white font-semibold">Ordus ABA</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[8px] text-slate-400 font-medium tracking-wide">SCHEDULER</span>
+                        <span className="text-[8px] text-slate-500">02/03 2025</span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <span className="px-2 py-0.5 bg-green-500 rounded text-[7px] text-white font-medium">Generate Schedule</span>
+                        <span className="px-2 py-0.5 bg-blue-500 rounded text-[7px] text-white font-medium">Bonus Controls</span>
+                      </div>
+                    </div>
+                    {/* Schedule rows */}
+                    <div className="space-y-1.5">
+                      {[
+                        { name: 'B. Sullivan', widths: ['22%', '18%', '12%', '20%', '15%'] as const, colors: ['bg-purple-500', 'bg-orange-400', 'bg-green-500', 'bg-pink-400', 'bg-blue-400'] },
+                        { name: 'C. Mock', widths: ['28%', '20%', '25%'] as const, colors: ['bg-cyan-500', 'bg-emerald-500', 'bg-amber-400'] },
+                        { name: 'S. Nelson', widths: ['18%', '15%', '20%', '12%', '22%'] as const, colors: ['bg-green-500', 'bg-blue-500', 'bg-red-400', 'bg-orange-500', 'bg-teal-400'] },
+                        { name: 'I. Alvarez', widths: ['25%', '15%', '22%', '18%'] as const, colors: ['bg-yellow-400', 'bg-purple-400', 'bg-pink-500', 'bg-teal-500'] },
+                        { name: 'P. Williams', widths: ['20%', '18%', '15%', '25%'] as const, colors: ['bg-blue-400', 'bg-rose-400', 'bg-emerald-400', 'bg-amber-500'] },
+                        { name: 'M. Anderson', widths: ['30%', '22%', '25%'] as const, colors: ['bg-indigo-400', 'bg-green-400', 'bg-orange-400'] },
+                        { name: 'R. Foster', widths: ['18%', '22%', '15%', '20%'] as const, colors: ['bg-teal-400', 'bg-pink-400', 'bg-cyan-400', 'bg-violet-400'] },
+                        { name: 'A. Grossman', widths: ['25%', '20%', '28%'] as const, colors: ['bg-rose-500', 'bg-blue-400', 'bg-amber-400'] },
+                        { name: 'S. Miyazaki', widths: ['20%', '18%', '22%', '15%'] as const, colors: ['bg-emerald-500', 'bg-purple-500', 'bg-orange-400', 'bg-pink-400'] },
+                        { name: 'L. Monroe', widths: ['22%', '15%', '25%', '18%'] as const, colors: ['bg-red-400', 'bg-cyan-500', 'bg-yellow-400', 'bg-green-400'] },
+                      ].map((row, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-[8px] text-slate-300 w-16 truncate font-medium">{row.name}</span>
+                          <div className="flex-1 flex gap-1">
+                            {row.colors.map((color, j) => (
+                              <div
+                                key={j}
+                                className={`${color} h-4 rounded`}
+                                style={{ width: row.widths[j] }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* Stand neck */}
+                <div className="flex justify-center">
+                  <div className="w-20 h-6 bg-gradient-to-b from-slate-600 to-slate-500" />
+                </div>
+                {/* Stand base */}
+                <div className="flex justify-center">
+                  <div className="w-40 h-2.5 bg-gradient-to-b from-slate-500 to-slate-400 rounded-b-xl" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+              Built for the Real-World Chaos of ABA Clinics
+            </h2>
+            <p className="text-lg text-blue-50 max-w-3xl mx-auto">
+              Ordus evaluates thousands of schedule combinations instantly to deliver clinically valid, compliant, and staff-friendly schedules.
             </p>
           </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
+            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+              <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
+                Intelligent Generation
+              </h3>
+              <p className="text-slate-600 leading-relaxed">
+                Maximize billable hours, streamline travel efficiency, and prioritize therapist wellbeing automatically.
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+              <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
+                Compliance Engine
+              </h3>
+              <p className="text-slate-600 leading-relaxed">
+                Insurance credentialing, supervision ratios, and labor rules are enforced in real time, every time.
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+              <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
+                Adaptive Re-Routing
+              </h3>
+              <p className="text-slate-600 leading-relaxed">
+                Lock in what matters, and let the system re-optimize the rest when unexpected cancellations happen.
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+              <h3 className="text-xl font-bold text-blue-500 mb-4 leading-snug">
+                Visual Scheduling
+              </h3>
+              <p className="text-slate-600 leading-relaxed">
+                Clean Gantt-style views with intuitive drag-and-drop adjustments and instant clinical validation.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Scrolling Marquee Ticker */}
+      <section className="bg-blue-500/50 py-5 overflow-hidden border-y border-blue-300/30">
+        <div className="animate-marquee whitespace-nowrap flex items-center">
+          {[1, 2, 3].map((set) => (
+            <div key={set} className="flex items-center">
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Turn scheduling hours into minutes</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Schedules your therapists will actually love</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
+              <span className="text-xl sm:text-2xl font-bold text-white mx-6">Stop denied claims before they happen</span>
+              <span className="text-2xl sm:text-3xl font-bold text-blue-200 mx-4">&gt;</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Operational Efficiency Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-indigo-900">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="inline-block relative">
+              <h2 className="text-4xl sm:text-5xl font-bold italic text-white">
+                Put Scheduling on Autopilot
+              </h2>
+              {/* Decorative underline */}
+              <svg className="absolute -bottom-3 left-0 w-full" viewBox="0 0 400 12" fill="none">
+                <path d="M2 8C80 2 200 2 398 8" stroke="#FBBF24" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-10">
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-white mb-4">The Problem</h3>
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Schedulers spend <span className="font-bold text-white">10-20 hours per week</span> manually adjusting schedules. A single cancellation can trigger cascading operational conflicts.
+              </p>
+            </div>
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Solution</h3>
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Ordus' proprietary algorithm generates valid daily schedules <span className="font-bold text-white">in seconds</span>, dynamically recalculating the moment changes occur.
+              </p>
+            </div>
+            <div className="bg-indigo-800/50 p-8 rounded-2xl border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-yellow-400 mb-4">The Result</h3>
+              <p className="text-indigo-100 leading-relaxed text-lg">
+                Reduce administrative overhead by <span className="font-bold text-white">80%</span>, decrease therapist burnout, and ensure your clinic runs at maximum billable capacity.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-10 px-4 sm:px-6 lg:px-8 bg-indigo-950">
+        <div className="max-w-7xl mx-auto flex flex-col items-center justify-center">
+          <div className="flex items-center gap-2 mb-2">
+            <SparklesIcon className="w-5 h-5 text-white" />
+            <span className="text-base font-bold text-white">Ordus ABA</span>
+          </div>
+          <p className="text-indigo-300 text-sm">
+            Smarter scheduling for modern ABA operations.
+          </p>
         </div>
       </footer>
 

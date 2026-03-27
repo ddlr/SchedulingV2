@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { userManagementService } from '../services/userManagementService';
-import { demoRequestService, DemoRequest } from '../services/demoRequestService';
+
 import { User } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { PlusIcon } from './icons/PlusIcon';
@@ -10,7 +10,6 @@ import { XMarkIcon } from './icons/XMarkIcon';
 
 const UserManagementPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [demoRequests, setDemoRequests] = useState<DemoRequest[]>([]);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,12 +25,8 @@ const UserManagementPanel: React.FC = () => {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [usersData, requestsData] = await Promise.all([
-      userManagementService.getAllUsers(),
-      demoRequestService.getAllRequests(),
-    ]);
+    const usersData = await userManagementService.getAllUsers();
     setUsers(usersData);
-    setDemoRequests(requestsData);
     setLoading(false);
   }, []);
 
@@ -143,15 +138,6 @@ const UserManagementPanel: React.FC = () => {
     }
   };
 
-  const handleUpdateDemoStatus = async (id: string, status: DemoRequest['status']) => {
-    const result = await demoRequestService.updateRequestStatus(id, status);
-    if (result.success) {
-      await loadData();
-    } else {
-      alert(result.error || 'Failed to update status');
-    }
-  };
-
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case 'super_admin':
@@ -162,21 +148,6 @@ const UserManagementPanel: React.FC = () => {
         return 'bg-blue-100 text-blue-700';
       case 'viewer':
         return 'bg-slate-100 text-slate-700';
-      default:
-        return 'bg-slate-100 text-slate-700';
-    }
-  };
-
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-700';
-      case 'contacted':
-        return 'bg-blue-100 text-blue-700';
-      case 'approved':
-        return 'bg-green-100 text-green-700';
-      case 'rejected':
-        return 'bg-red-100 text-red-700';
       default:
         return 'bg-slate-100 text-slate-700';
     }
@@ -260,58 +231,6 @@ const UserManagementPanel: React.FC = () => {
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-xl font-bold text-slate-900 mb-6">Demo Requests</h3>
-        <div className="space-y-4">
-          {demoRequests.map((request) => (
-            <div key={request.id} className="bg-white rounded-lg border border-slate-200 p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-bold text-slate-900">{request.company_name}</h4>
-                  <p className="text-sm text-slate-600">{request.contact_name}</p>
-                  <p className="text-sm text-slate-600">{request.email}</p>
-                  {request.phone && <p className="text-sm text-slate-600">{request.phone}</p>}
-                </div>
-                <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusBadgeColor(request.status)}`}>
-                  {request.status}
-                </span>
-              </div>
-              {request.message && (
-                <p className="text-sm text-slate-700 mb-4 italic">"{request.message}"</p>
-              )}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleUpdateDemoStatus(request.id, 'contacted')}
-                  className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                >
-                  Mark Contacted
-                </button>
-                <button
-                  onClick={() => handleUpdateDemoStatus(request.id, 'approved')}
-                  className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleUpdateDemoStatus(request.id, 'rejected')}
-                  className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                >
-                  Reject
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 mt-2">
-                Submitted: {new Date(request.created_at).toLocaleDateString()}
-              </p>
-            </div>
-          ))}
-          {demoRequests.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-lg border border-slate-200">
-              <p className="text-slate-400">No demo requests</p>
-            </div>
-          )}
         </div>
       </div>
 
