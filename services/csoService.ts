@@ -210,7 +210,13 @@ export class FastScheduler {
             const le = Math.floor((timeToMinutes(IDEAL_LUNCH_WINDOW_END_FOR_START) - OP_START) / SLOT_SIZE);
             const opts = [];
             for (let s = ls; s <= le; s++) opts.push(s);
-            opts.sort((a, b) => (lunchCount[a] + lunchCount[a+1]) - (lunchCount[b] + lunchCount[b+1]) + (Math.random() - 0.5));
+            opts.sort((a, b) => {
+                // Prefer starting lunch at 12:00 (slot 4 for 11:00-13:00 window)
+                const ideal = Math.floor((timeToMinutes("12:00") - OP_START) / SLOT_SIZE);
+                const distA = Math.abs(a - ideal);
+                const distB = Math.abs(b - ideal);
+                return (distA - distB) + (lunchCount[a] + lunchCount[a+1] - (lunchCount[b] + lunchCount[b+1])) * 5 + (Math.random() - 0.5) * 10;
+            });
             for (const s of opts) {
                 if (tracker.isTFree(q.ti, s, 2) && lunchCount[s] < maxConcurrentLunches && lunchCount[s+1] < maxConcurrentLunches) {
                     schedule.push(this.ent(-1, q.ti, s, 2, 'IndirectTime'));
@@ -279,19 +285,28 @@ export class FastScheduler {
             });
         });
 
-        // Pass 3: ABA Sessions (Global interleaved approach to ensure fair distribution and gap-free coverage)
-        const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== 'OT' && x.t.role !== 'SLP');
-        for (let s = 0; s < NUM_SLOTS; s++) {
+        // Pass 3: ABA Sessions (Lunch-First Priority Strategy)
+        const abaEligibleTherapists = sortedTherapists.filter(x => x.t.role !== "OT" && x.t.role !== "SLP");
+
+        // Core lunch window for prioritization
+        const lsPrio = Math.floor((timeToMinutes("11:00") - OP_START) / SLOT_SIZE);
+        const lePrio = Math.floor((timeToMinutes("13:30") - OP_START) / SLOT_SIZE);
+
+        // Define iteration slots: middle-out starting with lunch
+        const slotsToProcess = [];
+        for (let s = lsPrio; s < lePrio; s++) slotsToProcess.push(s);
+        for (let s = 0; s < lsPrio; s++) slotsToProcess.push(s);
+        for (let s = lePrio; s < NUM_SLOTS; s++) slotsToProcess.push(s);
+
+        slotsToProcess.forEach(s => {
             const shuffledClientsForSlot = [...shuffledC].sort(() => Math.random() - 0.5);
             shuffledClientsForSlot.forEach(target => {
                 if (tracker.isCFree(target.ci, s, 1)) {
                     const quals = abaEligibleTherapists.filter(x => this.meetsInsurance(x.t, target.c)).sort((a, b) => {
-                        // Priority 1: Already working with this client (Medicaid limit safety)
                         const aIsKnown = tracker.cT[target.ci].has(a.ti) ? 0 : 1;
                         const bIsKnown = tracker.cT[target.ci].has(b.ti) ? 0 : 1;
                         if (aIsKnown !== bIsKnown) return aIsKnown - bIsKnown;
 
-                        // Priority 2: Same team as client (strict team-first)
                         const clientTeam = target.c.teamId;
                         if (clientTeam) {
                             const aSameTeam = a.t.teamId === clientTeam ? 0 : 1;
@@ -299,94 +314,58 @@ export class FastScheduler {
                             if (aSameTeam !== bSameTeam) return aSameTeam - bSameTeam;
                         }
 
-                        // Priority 3: Role rank (BT/RBT first for billable work)
                         const aRank = this.getRoleRank(a.t.role);
                         const bRank = this.getRoleRank(b.t.role);
-                        if (aRank !== bRank) return aRank - bRank; // Lower rank (BT/RBT) first
+                        if (aRank !== bRank) return aRank - bRank;
 
-                        // Priority 4: Current session count (even distribution among same-tier roles)
                         return (tSessionCount[a.ti] - tSessionCount[b.ti]) + (Math.random() - 0.5) * 2;
                     });
 
                     for (const q of quals) {
-                        // Check provider limit
                         const maxP = this.getMaxProviders(target.c);
                         if (tracker.cT[target.ci].size >= maxP && !tracker.cT[target.ci].has(q.ti)) continue;
 
-                        // Try session lengths from max down to min required
                         const minLenSlots = Math.ceil(this.getMinDuration(target.c) / SLOT_SIZE);
                         const maxAllowedLenSlots = Math.floor(this.getMaxDuration(target.c) / SLOT_SIZE);
                         const remainingMins = this.getMaxWeeklyMinutes(target.c) - (clientMinutes.get(target.ci) || 0);
                         const remainingSlots = Math.floor(remainingMins / SLOT_SIZE);
+                        const idealMax = 10; // 2.5 hours
+                        const idealMin = 6;  // 1.5 hours
+                        const possibleLens = [];
+                        for (let l = Math.min(startLenSlots, idealMax); l >= Math.max(minLenSlots, idealMin); l--) possibleLens.push(l);
+                        for (let l = startLenSlots; l > idealMax; l--) if (l >= minLenSlots) possibleLens.push(l);
+                        for (let l = Math.min(startLenSlots, idealMin - 1); l >= minLenSlots; l--) possibleLens.push(l);
 
-                        const startLenSlots = Math.min(maxAllowedLenSlots, remainingSlots);
-
-                        for (let len = startLenSlots; len >= minLenSlots; len--) {
+                        for (let len of possibleLens) {
                             if (s + len <= NUM_SLOTS && tracker.isCFree(target.ci, s, len) && tracker.isTFree(q.ti, s, len)) {
-                                // Heuristic: Avoid leaving small unfillable gaps (< required min session duration)
-                                let gapAfter = 0;
-                                let tempS = s + len;
-                                while(tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) {
-                                    gapAfter++;
-                                    tempS++;
+                                // Relax gap heuristic during lunch window to facilitate handoffs
+                                if (s < lsPrio || s >= lePrio) {
+                                    let gapAfter = 0; let tempS = s + len;
+                                    while(tempS < NUM_SLOTS && tracker.isCFree(target.ci, tempS, 1)) { gapAfter++; tempS++; }
+                                    if (gapAfter > 0 && gapAfter < minLenSlots) continue;
                                 }
-                                if (gapAfter > 0 && gapAfter < minLenSlots) continue;
 
                                 if (this.isBTB(schedule, target.c.id, q.t.id, s, len)) continue;
-
-                                // Final duration safety check
                                 if (len * SLOT_SIZE > maxAllowedLenSlots * SLOT_SIZE) continue;
 
-                                schedule.push(this.ent(target.ci, q.ti, s, len, 'ABA'));
+                                schedule.push(this.ent(target.ci, q.ti, s, len, "ABA"));
                                 tracker.book(q.ti, target.ci, s, len);
                                 tSessionCount[q.ti]++;
                                 clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (len * SLOT_SIZE));
                                 break;
                             }
                         }
-                        // Pseudo-split: allow short ABA adjacent to AlliedHealth at edge of day
-                        if (tracker.isCFree(target.ci, s, 1)) {
-                            let maxFreeLen = 0;
-                            while (s + maxFreeLen < NUM_SLOTS && tracker.isCFree(target.ci, s + maxFreeLen, 1)) maxFreeLen++;
-
-                            if (maxFreeLen > 0 && maxFreeLen < minLenSlots) {
-                                const blockSlot = s + maxFreeLen;
-                                const isBlockedByAH = blockSlot < NUM_SLOTS && schedule.some(e =>
-                                    e.clientId === target.c.id &&
-                                    e.sessionType.startsWith('AlliedHealth_') &&
-                                    timeToMinutes(e.startTime) === OP_START + blockSlot * SLOT_SIZE
-                                );
-                                const isAfterAH = s > 0 && schedule.some(e =>
-                                    e.clientId === target.c.id &&
-                                    e.sessionType.startsWith('AlliedHealth_') &&
-                                    timeToMinutes(e.endTime) === OP_START + s * SLOT_SIZE
-                                );
-
-                                const isStartEdge = s === 0 || !tracker.isCFree(target.ci, s - 1, 1);
-                                const isEndEdge = s + maxFreeLen >= NUM_SLOTS;
-
-                                if ((isBlockedByAH && isStartEdge) || (isAfterAH && isEndEdge)) {
-                                    if (tracker.isTFree(q.ti, s, maxFreeLen) && !this.isBTB(schedule, target.c.id, q.t.id, s, maxFreeLen)) {
-                                        schedule.push(this.ent(target.ci, q.ti, s, maxFreeLen, 'ABA'));
-                                        tracker.book(q.ti, target.ci, s, maxFreeLen);
-                                        tSessionCount[q.ti]++;
-                                        clientMinutes.set(target.ci, (clientMinutes.get(target.ci) || 0) + (maxFreeLen * SLOT_SIZE));
-                                    }
-                                }
-                            }
-                        }
                         if (!tracker.isCFree(target.ci, s, 1)) break;
                     }
                 }
             });
-        }
-
+        });
         // Filter out lunches for people with no billable work
         return schedule.filter(e => {
-            if (e.sessionType !== 'IndirectTime') return true;
+            if (e.sessionType !== "IndirectTime") return true;
             return schedule.some(s =>
                 s.therapistId === e.therapistId &&
-                (s.sessionType === 'ABA' || s.sessionType.startsWith('AlliedHealth_'))
+                (s.sessionType === "ABA" || s.sessionType.startsWith("AlliedHealth_"))
             );
         });
     }
@@ -463,18 +442,20 @@ export class FastScheduler {
         let penalty = 0;
         const billableTimes = new Map<string, number>();
         s.forEach(e => {
-            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+            if (e.sessionType === "ABA" || e.sessionType.startsWith("AlliedHealth_")) {
                 const dur = timeToMinutes(e.endTime) - timeToMinutes(e.startTime);
                 billableTimes.set(e.therapistId, (billableTimes.get(e.therapistId) || 0) + dur);
+
+                // Ideal session length penalty (1.5h to 2.5h)
+                if (e.sessionType === "ABA") {
+                    if (dur < 90 || dur > 150) penalty += 5000;
+                }
             }
         });
 
         const data = this.therapists.map(t => ({ p: this.getRoleRank(t.role), billable: billableTimes.get(t.id) || 0 }));
         for (let i = 0; i < data.length; i++) {
             for (let j = 0; j < data.length; j++) {
-                // If therapist i is higher rank (BCBA) than therapist j (BT)
-                // but therapist i has MORE billable time than j, penalize.
-                // We want to preserve 'blank' time for senior staff.
                 if (data[i].p > data[j].p && data[i].billable > data[j].billable) {
                     penalty += (data[i].billable - data[j].billable) * 100;
                 }
@@ -483,7 +464,7 @@ export class FastScheduler {
 
         // Team consistency penalty: penalize cross-team assignments
         s.forEach(e => {
-            if (e.sessionType === 'ABA' || e.sessionType.startsWith('AlliedHealth_')) {
+            if (e.sessionType === "ABA" || e.sessionType.startsWith("AlliedHealth_")) {
                 if (e.clientId && e.therapistId) {
                     const client = this.clients.find(c => c.id === e.clientId);
                     const therapist = this.therapists.find(t => t.id === e.therapistId);
@@ -495,7 +476,6 @@ export class FastScheduler {
         });
 
         return penalty;
-    }
 }
 
 export async function runCsoAlgorithm(
